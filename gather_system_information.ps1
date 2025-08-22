@@ -1,10 +1,12 @@
 <#
-System Report
-- Dark themed HTML dashboard with tabs & responsive tables
-- Summary tab: CPU/Memory/Disk doughnuts + system details (CPU/GPU)
-- Performance tab: real sampled data (last 30s, CPU/Memory/Disk) as line charts
-- Printers tab: trimmed to 5 useful columns
-- Excel export: auto-installs NuGet + ImportExcel silently (system-wide if admin, else current user)
+System Report Script
+Emkraan branded
+- Dark tabbed HTML dashboard with responsive tables
+- Summary tab: CPU/Memory/Disk charts + system card (CPU + GPU names)
+- Performance tab: actual sampled data (30s) CPU/Memory/Disk
+- Printers trimmed to 5 useful columns
+- Auto-install NuGet + ImportExcel silently (system-wide if admin, else CurrentUser)
+- Excel export (multi-sheet workbook)
 #>
 
 $tempDir  = $env:TEMP
@@ -14,16 +16,17 @@ $xlsxPath = Join-Path $tempDir "system_report.xlsx"
 # ====================================================================
 # Silent NuGet + ImportExcel (admin-aware)
 # ====================================================================
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole]::Administrator
-)
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 # Ensure NuGet provider
 if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
     if ($isAdmin) {
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -ErrorAction SilentlyContinue | Out-Null
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 `
+            -Force -ForceBootstrap -ErrorAction SilentlyContinue | Out-Null
     } else {
-        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -ForceBootstrap -Scope CurrentUser -ErrorAction SilentlyContinue | Out-Null
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 `
+            -Force -ForceBootstrap -Scope CurrentUser -ErrorAction SilentlyContinue | Out-Null
     }
 }
 
@@ -50,10 +53,10 @@ $BIOS           = Get-CimInstance Win32_BIOS
 $Motherboard    = Get-CimInstance Win32_BaseBoard
 $NICs           = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled }
 $Printers       = Get-CimInstance Win32_Printer | Select Name,DriverName,PortName,Default,WorkOffline
-$USBDevices     = Get-PnpDevice | Where-Object { $_.InstanceId -like "USB*" } | Select Class,FriendlyName,Manufacturer,Status,InstanceId
+$USBDevices     = Get-PnpDevice | Where-Object { $_.InstanceId -like "USB*" } | 
+                    Select Class,FriendlyName,Manufacturer,Status,InstanceId
 $Services       = Get-Service | Select Name,DisplayName,Status,StartType
 
-# Networking
 $IPInfo = foreach ($nic in $NICs) {
     [PSCustomObject]@{
         Description    = $nic.Description
@@ -64,7 +67,7 @@ $IPInfo = foreach ($nic in $NICs) {
     }
 }
 
-# Snapshot
+# Snapshot metrics
 $cpuLoad   = [math]::Round((Get-CimInstance Win32_Processor | Measure -Property LoadPercentage -Average).Average,0)
 $cpuFree   = 100 - $cpuLoad
 $totalMem  = [math]::Round($OS.TotalVisibleMemorySize/1MB,2)
@@ -81,26 +84,46 @@ $uptime = (Get-Date) - $OS.LastBootUpTime
 $gpuNames = if ($GPU) { ($GPU | Select -Expand Name) -join "<br/>" } else { "None" }
 
 # ====================================================================
-# Performance Sampling (30s capture with Get-Counter)
+# Collect Performance Samples (30 seconds)
 # ====================================================================
-$cpuSamples,@(),$memSamples,$diskSamples = @(),@(),@(),@()
-$cpuSamples = @(); $memSamples=@(); $diskSamples=@()
+$cpuSamples   = @()
+$memSamples   = @()
+$diskSamples  = @()
+
 for ($i=0; $i -lt 15; $i++) {
-    $cpuNow = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
-    $memNow = 100 - ((Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue / ($totalMem*1024)) * 100
-    $diskNow= (Get-Counter '\PhysicalDisk(_Total)\% Disk Time').CounterSamples.CookedValue
-    $cpuSamples += [math]::Round($cpuNow,0)
-    $memSamples += [math]::Round($memNow,0)
-    $diskSamples+= [math]::Round($diskNow,0)
+    $cpuNow  = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
+    $memNow  = 100 - ((Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue / ($totalMem*1024)) * 100
+    $diskNow = (Get-Counter '\PhysicalDisk(_Total)\% Disk Time').CounterSamples.CookedValue
+
+    $cpuSamples  += [math]::Round($cpuNow,0)
+    $memSamples  += [math]::Round($memNow,0)
+    $diskSamples += [math]::Round($diskNow,0)
+
     Start-Sleep -Seconds 2
 }
+
 $cpuArr   = ($cpuSamples -join ",")
 $memArr   = ($memSamples -join ",")
 $diskArr  = ($diskSamples -join ",")
 $labels   = (0..($cpuSamples.Count-1) | ForEach-Object {$_*2}) -join ","
 
 # ====================================================================
-# Helper: ConvertTo-HTMLTable
+# Excel Export (multi-sheet)
+# ====================================================================
+$params=@{Path=$xlsxPath;AutoSize=$true;Show=$false}
+$ComputerSystem|Export-Excel @params -WorksheetName "System"
+$CPU|Export-Excel @params -WorksheetName "CPU" -Append
+$GPU|Export-Excel @params -WorksheetName "GPU" -Append
+$OS|Export-Excel @params -WorksheetName "OS" -Append
+$MemoryModules|Export-Excel @params -WorksheetName "Memory" -Append
+$Disks|Export-Excel @params -WorksheetName "Disks" -Append
+$IPInfo|Export-Excel @params -WorksheetName "Network" -Append
+$Printers|Export-Excel @params -WorksheetName "Printers" -Append
+$USBDevices|Export-Excel @params -WorksheetName "USB" -Append
+$Services|Export-Excel @params -WorksheetName "Services" -Append
+
+# ====================================================================
+# HTML Helper
 # ====================================================================
 function ConvertTo-HTMLTable {
     param($Data,$Title)
@@ -128,21 +151,6 @@ function ConvertTo-HTMLTable {
     }
     $html += "</table></div>";return $html
 }
-
-# ====================================================================
-# Excel Export (multi-sheets)
-# ====================================================================
-$params=@{Path=$xlsxPath;AutoSize=$true;Show=$false}
-$ComputerSystem|Export-Excel @params -WorksheetName "System"
-$CPU|Export-Excel @params -WorksheetName "CPU" -Append
-$GPU|Export-Excel @params -WorksheetName "GPU" -Append
-$OS|Export-Excel @params -WorksheetName "OS" -Append
-$MemoryModules|Export-Excel @params -WorksheetName "Memory" -Append
-$Disks|Export-Excel @params -WorksheetName "Disks" -Append
-$IPInfo|Export-Excel @params -WorksheetName "Network" -Append
-$Printers|Export-Excel @params -WorksheetName "Printers" -Append
-$USBDevices|Export-Excel @params -WorksheetName "USB" -Append
-$Services|Export-Excel @params -WorksheetName "Services" -Append
 
 # ====================================================================
 # HTML Report
@@ -190,13 +198,15 @@ function topFunction(){window.scrollTo({top:0,behavior:'smooth'});}
 window.onload=function(){
   document.getElementsByClassName('tablink')[0].click();
 
+  // Summary doughnuts
   new Chart(document.getElementById('cpuChartSummary').getContext('2d'),
     {type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${cpuLoad},${cpuFree}],backgroundColor:['#E53935','#43A047']}]}});
   new Chart(document.getElementById('memChartSummary').getContext('2d'),
-    {type:'doughnut',data:{labels:['Used GB','Free GB'],datasets:[{data:[${usedMem},${freeMem}],backgroundColor:['#1E88E5','#757575']}]}});
+    {type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${usedMem},${freeMem}],backgroundColor:['#1E88E5','#757575']}]}});
   new Chart(document.getElementById('diskChartSummary').getContext('2d'),
-    {type:'doughnut',data:{labels:['Used GB','Free GB'],datasets:[{data:[${diskUsedGB},${diskFreeGB}],backgroundColor:['#8E24AA','#00897B']}]}});
+    {type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${diskUsedGB},${diskFreeGB}],backgroundColor:['#8E24AA','#00897B']}]}});
   
+  // Performance line charts
   new Chart(document.getElementById('cpuRealtime').getContext('2d'),
     {type:'line',data:{labels:[${labels}],datasets:[{label:'CPU %',data:[${cpuArr}],borderColor:'#E53935',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
   new Chart(document.getElementById('memRealtime').getContext('2d'),
@@ -242,7 +252,7 @@ window.onload=function(){
 </div>
 
 <div id="Performance" class="tabcontent">
- <h3>CPU / Memory / Disk (Sampled last 30s)</h3>
+ <h3>CPU / Memory / Disk (last 30s samples)</h3>
  <canvas id="cpuRealtime" height="120"></canvas>
  <canvas id="memRealtime" height="120"></canvas>
  <canvas id="diskRealtime" height="120"></canvas>
@@ -273,7 +283,7 @@ $(ConvertTo-HTMLTable ($Disks|Select DeviceID,VolumeName,@{n="SizeGB";e={[math]:
 "@
 
 # ====================================================================
-# Save HTML and Launch
+# Save & Launch
 # ====================================================================
 $HTML | Set-Content $htmlPath -Encoding UTF8
 Start-Process $htmlPath
