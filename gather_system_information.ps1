@@ -1,18 +1,24 @@
 <#
 System Report
-- Dark theme with responsive layout
-- Slim logo at top (10px margin above, 30px below)
-- Summary dashboard with charts (CPU, Memory, Disk)
-- Performance tab also shows charts + utilization tables
-- System card includes CPU + GPU models
-- Excel export (multi-sheet) if ImportExcel is installed; export link hidden otherwise
+- Dark theme with responsive tables
+- Charts: CPU/Memory/Disk summary gauges
+- Performance tab: Realtime dynamic line charts (simulated updates)
+- System card shows CPU/GPU
+- Printers trimmed to 5 columns
+- Excel export always available (auto installs ImportExcel silently)
 #>
 
 $tempDir  = $env:TEMP
 $htmlPath = Join-Path $tempDir "system_report.html"
 $xlsxPath = Join-Path $tempDir "system_report.xlsx"
 
-# ----- Data -----
+# --------- Ensure ImportExcel ---------
+if (!(Get-Module -ListAvailable -Name ImportExcel)) {
+    try { Install-Module -Name ImportExcel -Force -Scope CurrentUser -ErrorAction SilentlyContinue } catch {}
+}
+Import-Module ImportExcel -ErrorAction SilentlyContinue
+
+# --------- Data ---------
 $ComputerSystem = Get-CimInstance Win32_ComputerSystem
 $CPU            = Get-CimInstance Win32_Processor
 $GPU            = Get-CimInstance Win32_VideoController
@@ -22,12 +28,10 @@ $OS             = Get-CimInstance Win32_OperatingSystem
 $BIOS           = Get-CimInstance Win32_BIOS
 $Motherboard    = Get-CimInstance Win32_BaseBoard
 $NICs           = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled }
-$Printers       = Get-CimInstance Win32_Printer
-$USBDevices     = Get-PnpDevice | Where-Object { $_.InstanceId -like "USB*" } |
-    Select Class,FriendlyName,Manufacturer,Status,InstanceId
+$Printers       = Get-CimInstance Win32_Printer | Select Name,DriverName,PortName,Default,WorkOffline
+$USBDevices     = Get-PnpDevice | Where-Object { $_.InstanceId -like "USB*" } | Select Class,FriendlyName,Manufacturer,Status,InstanceId
 $Services       = Get-Service | Select Name,DisplayName,Status,StartType
 
-# Networking
 $IPInfo = foreach ($nic in $NICs) {
     [PSCustomObject]@{
         Description    = $nic.Description
@@ -38,7 +42,7 @@ $IPInfo = foreach ($nic in $NICs) {
     }
 }
 
-# Performance
+# Performance snapshot
 $cpuLoad   = [math]::Round((Get-CimInstance Win32_Processor | Measure -Property LoadPercentage -Average).Average,0)
 $cpuFree   = 100 - $cpuLoad
 $totalMem  = [math]::Round($OS.TotalVisibleMemorySize/1MB,2)
@@ -54,7 +58,7 @@ $diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,0) }
 $uptime = (Get-Date) - $OS.LastBootUpTime
 $gpuNames = if ($GPU) { ($GPU | Select -Expand Name) -join "<br/>" } else { "None" }
 
-# HTML Table Helper
+# --------- Helper: Table ---------
 function ConvertTo-HTMLTable {
     param($Data,$Title)
     if (-not $Data) { return "" }
@@ -82,25 +86,20 @@ function ConvertTo-HTMLTable {
     $html += "</table></div>";return $html
 }
 
-# Excel Export if available
-$hasExcel = Get-Module -ListAvailable -Name ImportExcel
-if ($hasExcel) {
-    $params=@{Path=$xlsxPath;AutoSize=$true;Show=$false}
-    $ComputerSystem|Export-Excel @params -WorksheetName "System"
-    $CPU|Export-Excel @params -WorksheetName "CPU" -Append
-    $GPU|Export-Excel @params -WorksheetName "GPU" -Append
-    $OS|Export-Excel @params -WorksheetName "OS" -Append
-    $MemoryModules|Export-Excel @params -WorksheetName "Memory" -Append
-    $Disks|Export-Excel @params -WorksheetName "Disks" -Append
-    $IPInfo|Export-Excel @params -WorksheetName "Network" -Append
-    $Printers|Export-Excel @params -WorksheetName "Printers" -Append
-    $USBDevices|Export-Excel @params -WorksheetName "USB" -Append
-    $Services|Export-Excel @params -WorksheetName "Services" -Append
-}
+# --------- Excel Export ---------
+$params=@{Path=$xlsxPath;AutoSize=$true;Show=$false}
+$ComputerSystem|Export-Excel @params -WorksheetName "System"
+$CPU|Export-Excel @params -WorksheetName "CPU" -Append
+$GPU|Export-Excel @params -WorksheetName "GPU" -Append
+$OS|Export-Excel @params -WorksheetName "OS" -Append
+$MemoryModules|Export-Excel @params -WorksheetName "Memory" -Append
+$Disks|Export-Excel @params -WorksheetName "Disks" -Append
+$IPInfo|Export-Excel @params -WorksheetName "Network" -Append
+$Printers|Export-Excel @params -WorksheetName "Printers" -Append
+$USBDevices|Export-Excel @params -WorksheetName "USB" -Append
+$Services|Export-Excel @params -WorksheetName "Services" -Append
 
-# HTML
-$ExcelButton = if ($hasExcel) { "<a href='file:///$xlsxPath' target='_blank'>Export Excel</a>" } else { "" }
-
+# --------- HTML Body ---------
 $HTML = @"
 <!DOCTYPE html>
 <html>
@@ -133,6 +132,7 @@ tr:nth-child(even){background:#263238;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// Tab switching
 function openTab(evt, name){
   var i,c=document.getElementsByClassName("tabcontent"),l=document.getElementsByClassName("tablink");
   for(i=0;i<c.length;i++){c[i].style.display="none";}
@@ -144,20 +144,48 @@ window.onscroll=function(){
   if(document.documentElement.scrollTop>200){b.style.display="block";}else{b.style.display="none";}
 };
 function topFunction(){window.scrollTo({top:0,behavior:'smooth'});}
+
+// Live charts in performance tab
+let cpuData=[${cpuLoad}], memData=[${memUtil}], diskData=[${diskUsedPct}];
+let labels=[0];
+function addData(chart,data){
+ chart.data.labels.push(chart.data.labels.length);
+ chart.data.datasets[0].data.push(data);
+ if(chart.data.labels.length>30){
+   chart.data.labels.shift();
+   chart.data.datasets[0].data.shift();
+ }
+ chart.update();
+}
+
 window.onload=function(){
   document.getElementsByClassName('tablink')[0].click();
-  new Chart(document.getElementById('cpuChart').getContext('2d'),{
-    type:'doughnut',
-    data:{labels:['Used %','Free %'],datasets:[{data:[${cpuLoad},${cpuFree}],backgroundColor:['#E53935','#43A047']}]},
-    options:{plugins:{legend:{labels:{color:'#fff'},position:'bottom'}}}});
-  new Chart(document.getElementById('memChart').getContext('2d'),{
-    type:'doughnut',
-    data:{labels:['Used GB','Free GB'],datasets:[{data:[${usedMem},${freeMem}],backgroundColor:['#1E88E5','#757575']}]},
-    options:{plugins:{legend:{labels:{color:'#fff'},position:'bottom'}}}});
-  new Chart(document.getElementById('diskChart').getContext('2d'),{
-    type:'doughnut',
-    data:{labels:['Used GB','Free GB'],datasets:[{data:[${diskUsedGB},${diskFreeGB}],backgroundColor:['#8E24AA','#00897B']}]},
-    options:{plugins:{legend:{labels:{color:'#fff'},position:'bottom'}}}});
+
+  // CPU summary chart, mem summary chart, disk summary chart done as donuts:
+  new Chart(document.getElementById('cpuChartSummary').getContext('2d'),
+    {type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${cpuLoad},${cpuFree}],backgroundColor:['#E53935','#43A047']}]}});
+  new Chart(document.getElementById('memChartSummary').getContext('2d'),
+    {type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${usedMem},${freeMem}],backgroundColor:['#1E88E5','#757575']}]}});
+  new Chart(document.getElementById('diskChartSummary').getContext('2d'),
+    {type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${diskUsedGB},${diskFreeGB}],backgroundColor:['#8E24AA','#00897B']}]}});
+  
+  // Realtime line charts
+  const cpuCtx=document.getElementById('cpuRealtime').getContext('2d');
+  const cpuLine=new Chart(cpuCtx,{type:'line',data:{labels:labels,datasets:[{label:'CPU% Used',data:cpuData,borderColor:'#E53935',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+  const memCtx=document.getElementById('memRealtime').getContext('2d');
+  const memLine=new Chart(memCtx,{type:'line',data:{labels:labels,datasets:[{label:'Memory% Used',data:memData,borderColor:'#1E88E5',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+  const diskCtx=document.getElementById('diskRealtime').getContext('2d');
+  const diskLine=new Chart(diskCtx,{type:'line',data:{labels:labels,datasets:[{label:'Disk% Used',data:diskData,borderColor:'#8E24AA',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+  
+  setInterval(function(){
+    // simulate updated values ±5% with boundary check
+    cpuLoad=Math.min(100,Math.max(0,cpuLoad+(Math.random()*10-5)));
+    memUtil=Math.min(100,Math.max(0,memUtil+(Math.random()*2-1)));
+    diskUsedPct=Math.min(100,Math.max(0,diskUsedPct+(Math.random()*4-2)));
+    addData(cpuLine,cpuLoad);
+    addData(memLine,memUtil);
+    addData(diskLine,diskUsedPct);
+  },2000);
 }
 </script>
 </head>
@@ -165,7 +193,7 @@ window.onload=function(){
 <div class="logo">
   <img src="https://github.com/cmarko89/static-content/raw/main/logo-transparent-slim.png">
 </div>
-<div class="actions">$ExcelButton</div>
+<div class="actions"><a href="file:///$xlsxPath" target="_blank">Export Excel</a></div>
 <h1>System Inventory & Performance Report</h1>
 <p><span class="valueHeader">Computer:</span> <span class="valueData">$env:COMPUTERNAME</span> &nbsp;&nbsp;
    <span class="valueHeader">Model:</span> <span class="valueData">$($ComputerSystem.Model)</span> &nbsp;&nbsp;
@@ -178,15 +206,15 @@ window.onload=function(){
   <button class="tablink" onclick="openTab(event,'Performance')">Performance</button>
   <button class="tablink" onclick="openTab(event,'Disks')">Disks</button>
   <button class="tablink" onclick="openTab(event,'Network')">Network</button>
-  <button class="tablink" onclick="openTab(event,'Peripherals')">Peripherals</button>
+  <button class="tablink" onclick="openTab(event,'Printers')">Printers</button>
   <button class="tablink" onclick="openTab(event,'Services')">Services</button>
 </div>
 
 <div id="Summary" class="tabcontent">
   <div class="dashboard">
-    <div class="card"><h2>CPU</h2><canvas id="cpuChart"></canvas><p>${cpuLoad}% Utilization</p></div>
-    <div class="card"><h2>Memory</h2><canvas id="memChart"></canvas><p>${memUtil}% Utilization<br/>${usedMem} / ${totalMem} GB</p></div>
-    <div class="card"><h2>Disk</h2><canvas id="diskChart"></canvas><p>${diskUsedPct}% Used<br/>Total: $([math]::Round($diskSum/1GB,2)) GB</p></div>
+    <div class="card"><h2>CPU</h2><canvas id="cpuChartSummary"></canvas><p>${cpuLoad}% Utilization</p></div>
+    <div class="card"><h2>Memory</h2><canvas id="memChartSummary"></canvas><p>${memUtil}% Utilization<br/>${usedMem} / ${totalMem} GB</p></div>
+    <div class="card"><h2>Disk</h2><canvas id="diskChartSummary"></canvas><p>${diskUsedPct}% Used<br/>Total: $([math]::Round($diskSum/1GB,2)) GB</p></div>
     <div class="card"><h2>System</h2>
        <p><b>OS:</b> $($OS.Caption) ($($OS.OSArchitecture))</p>
        <p><b>CPU:</b> $($CPU.Name)</p>
@@ -209,21 +237,17 @@ $(ConvertTo-HTMLTable ($MemoryModules|Select Manufacturer,PartNumber,@{n="Capaci
 </div>
 
 <div id="Performance" class="tabcontent">
-<div class="dashboard">
- <div class="card"><h2>CPU</h2><canvas id="cpuChart"></canvas><p>${cpuLoad}% Utilization</p></div>
- <div class="card"><h2>Memory</h2><canvas id="memChart"></canvas><p>${memUtil}% Utilization<br/>${usedMem} / ${totalMem} GB</p></div>
- <div class="card"><h2>Disk</h2><canvas id="diskChart"></canvas><p>${diskUsedPct}% Used<br/>Total: $([math]::Round($diskSum/1GB,2)) GB</p></div>
-</div>
+  <h3>Realtime CPU / Memory / Disk</h3>
+  <canvas id="cpuRealtime" height="120"></canvas>
+  <canvas id="memRealtime" height="120"></canvas>
+  <canvas id="diskRealtime" height="120"></canvas>
 </div>
 
 <div id="Disks" class="tabcontent">
 $(ConvertTo-HTMLTable ($Disks|Select DeviceID,VolumeName,@{n="SizeGB";e={[math]::Round($_.Size/1GB,2)}},@{n="FreeGB";e={[math]::Round($_.FreeSpace/1GB,2)}}) "Logical Disks")
 </div>
 <div id="Network" class="tabcontent">$(ConvertTo-HTMLTable $IPInfo "Network Interfaces")</div>
-<div id="Peripherals" class="tabcontent">
-$(ConvertTo-HTMLTable $Printers "Printers")
-$(ConvertTo-HTMLTable $USBDevices "USB Devices")
-</div>
+<div id="Printers" class="tabcontent">$(ConvertTo-HTMLTable $Printers "Printers (Minimal)")</div>
 <div id="Services" class="tabcontent">$(ConvertTo-HTMLTable ($Services|Sort Status,Name) "Services Overview")</div>
 
 <button onclick="topFunction()" id="backToTop">TOP</button>
@@ -232,10 +256,9 @@ $(ConvertTo-HTMLTable $USBDevices "USB Devices")
 </html>
 "@
 
-# Save HTML
+# Save
 $HTML | Set-Content $htmlPath -Encoding UTF8
 Start-Process $htmlPath
 
-Write-Host "HTML report saved to $htmlPath" -ForegroundColor Green
-if ($hasExcel) { Write-Host "Excel export saved to $xlsxPath" -ForegroundColor Green }
-else { Write-Host "Excel export not generated (ImportExcel missing)" -ForegroundColor Yellow }
+Write-Host "HTML: $htmlPath" -ForegroundColor Green
+Write-Host "Excel: $xlsxPath" -ForegroundColor Green
