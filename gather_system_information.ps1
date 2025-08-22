@@ -1,17 +1,18 @@
 <#
 System Report
-Dark theme HTML system inventory with charts and Excel export.
-- Logo flush at top, 10px margin-top, ~30px below before report body starts.
-- CPU, Memory, Disk charts.
-- GPU+CPU names included in System card.
-- Exports Excel if ImportExcel module is installed (button hidden otherwise).
+- Dark theme with responsive layout
+- Slim logo at top (10px margin above, 30px below)
+- Summary dashboard with charts (CPU, Memory, Disk)
+- Performance tab also shows charts + utilization tables
+- System card includes CPU + GPU models
+- Excel export (multi-sheet) if ImportExcel is installed; export link hidden otherwise
 #>
 
 $tempDir  = $env:TEMP
 $htmlPath = Join-Path $tempDir "system_report.html"
 $xlsxPath = Join-Path $tempDir "system_report.xlsx"
 
-# --------- Data Collection ---------
+# ----- Data -----
 $ComputerSystem = Get-CimInstance Win32_ComputerSystem
 $CPU            = Get-CimInstance Win32_Processor
 $GPU            = Get-CimInstance Win32_VideoController
@@ -26,7 +27,7 @@ $USBDevices     = Get-PnpDevice | Where-Object { $_.InstanceId -like "USB*" } |
     Select Class,FriendlyName,Manufacturer,Status,InstanceId
 $Services       = Get-Service | Select Name,DisplayName,Status,StartType
 
-# --------- Networking ---------
+# Networking
 $IPInfo = foreach ($nic in $NICs) {
     [PSCustomObject]@{
         Description    = $nic.Description
@@ -37,27 +38,23 @@ $IPInfo = foreach ($nic in $NICs) {
     }
 }
 
-# --------- Performance ---------
+# Performance
 $cpuLoad   = [math]::Round((Get-CimInstance Win32_Processor | Measure -Property LoadPercentage -Average).Average,0)
 $cpuFree   = 100 - $cpuLoad
-
 $totalMem  = [math]::Round($OS.TotalVisibleMemorySize/1MB,2)
 $freeMem   = [math]::Round($OS.FreePhysicalMemory/1MB,2)
 $usedMem   = $totalMem - $freeMem
 $memUtil   = if ($totalMem -gt 0) {[math]::Round(($usedMem/$totalMem)*100,0)} else {0}
-
 $diskSum   = ($Disks | Measure -Property Size -Sum).Sum
 $diskFree  = ($Disks | Measure -Property FreeSpace -Sum).Sum
 $diskUsed  = $diskSum - $diskFree
 $diskUsedGB= [math]::Round($diskUsed/1GB,2)
 $diskFreeGB= [math]::Round($diskFree/1GB,2)
 $diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,0) } else {0}
-
 $uptime = (Get-Date) - $OS.LastBootUpTime
-
 $gpuNames = if ($GPU) { ($GPU | Select -Expand Name) -join "<br/>" } else { "None" }
 
-# --------- Table Builder ---------
+# HTML Table Helper
 function ConvertTo-HTMLTable {
     param($Data,$Title)
     if (-not $Data) { return "" }
@@ -85,7 +82,7 @@ function ConvertTo-HTMLTable {
     $html += "</table></div>";return $html
 }
 
-# --------- Excel Export if possible ---------
+# Excel Export if available
 $hasExcel = Get-Module -ListAvailable -Name ImportExcel
 if ($hasExcel) {
     $params=@{Path=$xlsxPath;AutoSize=$true;Show=$false}
@@ -101,7 +98,9 @@ if ($hasExcel) {
     $Services|Export-Excel @params -WorksheetName "Services" -Append
 }
 
-# --------- HTML Report ---------
+# HTML
+$ExcelButton = if ($hasExcel) { "<a href='file:///$xlsxPath' target='_blank'>Export Excel</a>" } else { "" }
+
 $HTML = @"
 <!DOCTYPE html>
 <html>
@@ -112,7 +111,7 @@ $HTML = @"
 body {font-family:'Segoe UI',Tahoma;background:#1e1e1e;color:#ddd;margin:0;}
 h1 {color:#4FC3F7;margin-top:0;}
 h2,h3 {color:#81D4FA;}
-.table-container{overflow-x:auto;margin-bottom:20px;}
+.table-container{overflow-x:auto;margin-bottom:20px;max-width:100%;}
 table{border-collapse:collapse;width:100%;background:#2c2c2c;color:#eee;}
 th,td{border:1px solid #555;padding:6px 8px;text-align:center;}
 th{background:#37474F;color:#4FC3F7;}
@@ -166,6 +165,7 @@ window.onload=function(){
 <div class="logo">
   <img src="https://github.com/cmarko89/static-content/raw/main/logo-transparent-slim.png">
 </div>
+<div class="actions">$ExcelButton</div>
 <h1>System Inventory & Performance Report</h1>
 <p><span class="valueHeader">Computer:</span> <span class="valueData">$env:COMPUTERNAME</span> &nbsp;&nbsp;
    <span class="valueHeader">Model:</span> <span class="valueData">$($ComputerSystem.Model)</span> &nbsp;&nbsp;
@@ -207,10 +207,15 @@ $(ConvertTo-HTMLTable $GPU "Graphics")
 $(ConvertTo-HTMLTable $OS "OS")
 $(ConvertTo-HTMLTable ($MemoryModules|Select Manufacturer,PartNumber,@{n="CapacityGB";e={[math]::Round($_.Capacity/1GB,2)}}) "Memory Modules")
 </div>
+
 <div id="Performance" class="tabcontent">
-$(ConvertTo-HTMLTable @{ 'CPU Usage %'=$cpuLoad; 'Free CPU %'=$cpuFree } "CPU Usage")
-$(ConvertTo-HTMLTable @{ 'Total RAM GB'=$totalMem; 'Used GB'=$usedMem; 'Free GB'=$freeMem; 'Utilization %'=$memUtil } "Memory Usage")
+<div class="dashboard">
+ <div class="card"><h2>CPU</h2><canvas id="cpuChart"></canvas><p>${cpuLoad}% Utilization</p></div>
+ <div class="card"><h2>Memory</h2><canvas id="memChart"></canvas><p>${memUtil}% Utilization<br/>${usedMem} / ${totalMem} GB</p></div>
+ <div class="card"><h2>Disk</h2><canvas id="diskChart"></canvas><p>${diskUsedPct}% Used<br/>Total: $([math]::Round($diskSum/1GB,2)) GB</p></div>
 </div>
+</div>
+
 <div id="Disks" class="tabcontent">
 $(ConvertTo-HTMLTable ($Disks|Select DeviceID,VolumeName,@{n="SizeGB";e={[math]::Round($_.Size/1GB,2)}},@{n="FreeGB";e={[math]::Round($_.FreeSpace/1GB,2)}}) "Logical Disks")
 </div>
@@ -227,10 +232,10 @@ $(ConvertTo-HTMLTable $USBDevices "USB Devices")
 </html>
 "@
 
-# --------- Save & Launch ---------
+# Save HTML
 $HTML | Set-Content $htmlPath -Encoding UTF8
 Start-Process $htmlPath
 
 Write-Host "HTML report saved to $htmlPath" -ForegroundColor Green
 if ($hasExcel) { Write-Host "Excel export saved to $xlsxPath" -ForegroundColor Green }
-else { Write-Host "Excel not generated (ImportExcel module missing)" -ForegroundColor Yellow }
+else { Write-Host "Excel export not generated (ImportExcel missing)" -ForegroundColor Yellow }
