@@ -1,21 +1,15 @@
 <#
-.SYNOPSIS
-  System Inventory Report with HTML (Dark Mode, Charts, Tabs, Branding, Excel Export)
-.DESCRIPTION
-  Generates HTML report in %TEMP%, opens automatically.
-  Exports Excel (all data tabular) if ImportExcel is available.
-  No PDF/CSV anymore.
+System Report
+Generates HTML system inventory report with performance charts.
+Exports to Excel if ImportExcel module available.
 #>
 
-# ---------- Paths ----------
+# ----- Paths -----
 $tempDir  = $env:TEMP
-$baseName = "system_report"
-$htmlPath = Join-Path $tempDir "$baseName.html"
-$xlsxPath = Join-Path $tempDir "$baseName.xlsx"
+$htmlPath = Join-Path $tempDir "system_report.html"
+$xlsxPath = Join-Path $tempDir "system_report.xlsx"
 
-Write-Host "Generating report in $tempDir ..." -ForegroundColor Cyan
-
-# ---------- Data Collection ----------
+# ----- Data -----
 $ComputerSystem = Get-CimInstance Win32_ComputerSystem
 $BIOS           = Get-CimInstance Win32_BIOS
 $CPU            = Get-CimInstance Win32_Processor
@@ -44,19 +38,25 @@ $Pointing     = Get-CimInstance Win32_PointingDevice
 $Monitors     = Get-CimInstance Win32_DesktopMonitor
 $Services     = Get-Service | Select Name,DisplayName,Status,StartType
 
-# ---------- Performance ----------
-$cpuLoad   = [math]::Round((Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average,2)
+# ----- Performance Numbers -----
+$cpuLoad   = [math]::Round((Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average,0)
+$cpuFree   = 100 - $cpuLoad
+
 $totalMem  = [math]::Round($OS.TotalVisibleMemorySize/1MB,2)
 $freeMem   = [math]::Round($OS.FreePhysicalMemory/1MB,2)
 $usedMem   = $totalMem - $freeMem
+$memUtil   = [math]::Round(($usedMem/$totalMem)*100,0)
+
 $diskSum   = ($Disks | Measure-Object -Property Size -Sum).Sum
 $diskFree  = ($Disks | Measure-Object -Property FreeSpace -Sum).Sum
 $diskUsed  = $diskSum - $diskFree
-$diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,2) } else {0}
+$diskUsedGB= [math]::Round($diskUsed/1GB,2)
+$diskFreeGB= [math]::Round($diskFree/1GB,2)
+$diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,0) } else {0}
 
 $uptime = (Get-Date) - $OS.LastBootUpTime
 
-# ---------- Table Helper ----------
+# ----- Table Builder -----
 function ConvertTo-HTMLTable {
     param($Data,$Title)
     if (-not $Data) { return "" }
@@ -84,7 +84,10 @@ function ConvertTo-HTMLTable {
     $html += "</table></div>";return $html
 }
 
-# ---------- HTML ----------
+# ----- GPU Names -----
+$gpuNames = if ($GPU) { ($GPU | Select -Expand Name) -join "<br/>" } else { "" }
+
+# ----- HTML Report -----
 $HTML = @"
 <!DOCTYPE html>
 <html>
@@ -109,16 +112,16 @@ tr:nth-child(even){background:#263238;}
 .card h2{margin:0 0 10px;color:#4FC3F7;}
 .actions{float:right;margin-top:-70px;}
 .actions a{background:#4FC3F7;color:#000;padding:8px 12px;margin-left:8px;border-radius:4px;text-decoration:none;font-weight:bold;}
-.actions a:hover{background:#81D4FA;}
-#backToTop{display:none;position:fixed;bottom:20px;right:20px;background:#4FC3F7;color:#000;
+#backToTop{display:none;position:fixed;bottom:20px;right:20px;background:#E53935;color:#fff;
            padding:10px 14px;border:none;border-radius:6px;cursor:pointer;}
-.value{color:#4FC3F7;font-weight:bold;}
+.valueHeader{color:#fff;}
+.valueData{color:#4CAF50;font-weight:bold;}
+.logo img{max-width:300px;height:auto;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 function openTab(evt, name){
-  var i,c=document.getElementsByClassName("tabcontent"),
-      l=document.getElementsByClassName("tablink");
+  var i,c=document.getElementsByClassName("tabcontent"),l=document.getElementsByClassName("tablink");
   for(i=0;i<c.length;i++){c[i].style.display="none";}
   for(i=0;i<l.length;i++){l[i].className=l[i].className.replace(" active","");}
   document.getElementById(name).style.display="block";evt.currentTarget.className+=" active";
@@ -133,19 +136,19 @@ window.onload=function(){
   new Chart(document.getElementById('cpuChart').getContext('2d'),{
     type:'doughnut',
     data:{labels:['Used %','Free %'],
-          datasets:[{data:[${$cpuLoad},${100-$cpuLoad}],
+          datasets:[{data:[${cpuLoad},${cpuFree}],
                      backgroundColor:['#E53935','#43A047']}]},
     options:{plugins:{legend:{labels:{color:'#fff'},position:'bottom'}}}});
   new Chart(document.getElementById('memChart').getContext('2d'),{
     type:'doughnut',
     data:{labels:['Used GB','Free GB'],
-          datasets:[{data:[${$usedMem},${$freeMem}],
+          datasets:[{data:[${usedMem},${freeMem}],
                      backgroundColor:['#1E88E5','#757575']}]},
     options:{plugins:{legend:{labels:{color:'#fff'},position:'bottom'}}}});
   new Chart(document.getElementById('diskChart').getContext('2d'),{
     type:'doughnut',
     data:{labels:['Used GB','Free GB'],
-          datasets:[{data:[${[math]::Round($diskUsed/1GB,2)},${[math]::Round($diskFree/1GB,2)}],
+          datasets:[{data:[${diskUsedGB},${diskFreeGB}],
                      backgroundColor:['#8E24AA','#00897B']}]},
     options:{plugins:{legend:{labels:{color:'#fff'},position:'bottom'}}}});
 }
@@ -153,17 +156,16 @@ window.onload=function(){
 </head>
 <body>
 <div style="display:flex;align-items:center;justify-content:space-between;">
-  <div><img src="https://github.com/cmarko89/static-content/raw/main/logo-transparent.png" style="max-height:225px;"></div>
+  <div class="logo"><img src="https://github.com/cmarko89/static-content/raw/main/logo-transparent.png"></div>
   <div class="actions">
-    <!-- Only show Excel link, as others removed -->
     <a href="file:///$xlsxPath" target="_blank">Export Excel</a>
   </div>
 </div>
 <h1>System Inventory & Performance Report</h1>
-<p><b>Computer:</b> <span class="value">$env:COMPUTERNAME</span> &nbsp;&nbsp;
-   <b>Model:</b> <span class="value">$($ComputerSystem.Model)</span> &nbsp;&nbsp;
-   <b>User:</b> <span class="value">$env:USERNAME</span> &nbsp;&nbsp;
-   <b>Generated:</b> <span class="value">$(Get-Date)</span></p>
+<p><span class="valueHeader">Computer:</span> <span class="valueData">$env:COMPUTERNAME</span> &nbsp;&nbsp;
+   <span class="valueHeader">Model:</span> <span class="valueData">$($ComputerSystem.Model)</span> &nbsp;&nbsp;
+   <span class="valueHeader">User:</span> <span class="valueData">$env:USERNAME</span> &nbsp;&nbsp;
+   <span class="valueHeader">Generated:</span> <span class="valueData">$(Get-Date)</span></p>
 
 <div class="tab">
   <button class="tablink" onclick="openTab(event,'Summary')">Summary</button>
@@ -180,7 +182,11 @@ window.onload=function(){
     <div class="card"><h2>CPU</h2><canvas id="cpuChart"></canvas><p>${cpuLoad}% Utilization<br/>$($CPU.Name)</p></div>
     <div class="card"><h2>Memory</h2><canvas id="memChart"></canvas><p>${memUtil}% Utilization<br/>${usedMem} / ${totalMem} GB</p></div>
     <div class="card"><h2>Disk</h2><canvas id="diskChart"></canvas><p>${diskUsedPct}% Used<br/>Total: $([math]::Round($diskSum/1GB,2)) GB</p></div>
-    <div class="card"><h2>Graphics</h2><p>$($GPU | % {$_.Name} -join "<br/>")</p></div>
+    $(
+      if ($GPU) {
+        "<div class='card'><h2>Graphics</h2><p>$gpuNames</p></div>"
+      }
+    )
     <div class="card"><h2>System</h2><p><b>OS:</b> $($OS.Caption) ($($OS.OSArchitecture))</p>
     <p><b>Uptime:</b> $([string]::Format("{0:%d}d {0:%h}h {0:%m}m",$uptime))</p>
     <p><b>Printers:</b> $($Printers.Count) | <b>USB Devices:</b> $($USBDevices.Count)</p>
@@ -188,6 +194,7 @@ window.onload=function(){
   </div>
 </div>
 
+<!-- Other Tabs -->
 <div id="Overview" class="tabcontent">
 $(ConvertTo-HTMLTable $ComputerSystem "Computer System")
 $(ConvertTo-HTMLTable $BIOS "BIOS")
@@ -197,16 +204,13 @@ $(ConvertTo-HTMLTable $GPU "Graphics")
 $(ConvertTo-HTMLTable $OS "OS")
 $(ConvertTo-HTMLTable ($MemoryModules|Select Manufacturer,PartNumber,@{n="CapacityGB";e={[math]::Round($_.Capacity/1GB,2)}}) "Memory Modules")
 </div>
-
 <div id="Performance" class="tabcontent">
-$(ConvertTo-HTMLTable $cpuUsage "CPU Usage")
-$(ConvertTo-HTMLTable $memUsage "Memory Usage")
+$(ConvertTo-HTMLTable @{ 'CPU Usage %'=$cpuLoad; 'Free CPU %'=$cpuFree } "CPU Usage")
+$(ConvertTo-HTMLTable @{ 'Total RAM GB'=$totalMem; 'Used GB'=$usedMem; 'Free GB'=$freeMem; 'Utilization %'=$memUtil } "Memory Usage")
 </div>
-
 <div id="Disks" class="tabcontent">
 $(ConvertTo-HTMLTable ($Disks|Select DeviceID,VolumeName,@{n="SizeGB";e={[math]::Round($_.Size/1GB,2)}},@{n="FreeGB";e={[math]::Round($_.FreeSpace/1GB,2)}}) "Logical Disks")
 </div>
-
 <div id="Network" class="tabcontent">$(ConvertTo-HTMLTable $IPInfo "Network Interfaces")</div>
 <div id="Peripherals" class="tabcontent">
 $(ConvertTo-HTMLTable $SoundDevices "Audio Devices")
@@ -219,16 +223,16 @@ $(ConvertTo-HTMLTable $Batteries "Batteries")
 </div>
 <div id="Services" class="tabcontent">$(ConvertTo-HTMLTable ($Services|Sort Status,Name) "Services Overview")</div>
 
-<button onclick="topFunction()" id="backToTop">↑ Top</button>
+<button onclick="topFunction()" id="backToTop">TOP</button>
 <div class="footer">Report generated by Emkraan</div>
 </body>
 </html>
 "@
 
-# ---------- Save HTML ----------
+# ----- Save HTML -----
 $HTML | Set-Content $htmlPath -Encoding UTF8
 
-# ---------- Excel Export (if ImportExcel installed) ----------
+# ----- Excel Export (if module is installed) -----
 if (Get-Module -ListAvailable -Name ImportExcel) {
     $params=@{Path=$xlsxPath;AutoSize=$true;Show=$false}
     $ComputerSystem|Export-Excel @params -WorksheetName "System"
@@ -246,9 +250,9 @@ if (Get-Module -ListAvailable -Name ImportExcel) {
     $Monitors|Export-Excel @params -WorksheetName "Monitors" -Append
     $Batteries|Export-Excel @params -WorksheetName "Battery" -Append
     $Services|Export-Excel @params -WorksheetName "Services" -Append
-} 
+}
 
-# ---------- Launch ----------
+# ----- Launch -----
 Start-Process $htmlPath
-Write-Host "HTML: $htmlPath" -ForegroundColor Green
-Write-Host "Excel: $xlsxPath (if ImportExcel installed)" -ForegroundColor Green
+Write-Host "HTML report saved: $htmlPath" -ForegroundColor Green
+Write-Host "Excel report saved: $xlsxPath (if ImportExcel installed)" -ForegroundColor Green
