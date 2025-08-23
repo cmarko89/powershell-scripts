@@ -1,8 +1,8 @@
 <#
 System Report Script
 Emkraan branded
-Dark HTML tabbed dashboard with CPU/Memory/Disk charts, system info, performance graphs, 
-printer/service tables, and back to top button. Extended System card.
+Dark HTML tabbed dashboard with CPU/Memory/Disk charts, system info, performance graphs,
+printer/service tables, and back to top button. Extended System Card & Disk Tab.
 #>
 
 $tempDir  = $env:TEMP
@@ -10,6 +10,7 @@ $htmlPath = Join-Path $tempDir "system_report.html"
 
 Write-Host "Collecting system inventory..." -ForegroundColor Cyan
 
+# -------- Data Collection --------
 $ComputerSystem = Get-CimInstance Win32_ComputerSystem
 $CPU            = Get-CimInstance Win32_Processor
 $GPU            = Get-CimInstance Win32_VideoController
@@ -34,7 +35,7 @@ $IPInfo = foreach ($nic in $NICs) {
     }
 }
 
-# Snapshot metrics
+# -------- Snapshot values --------
 $cpuLoad   = [math]::Round((Get-CimInstance Win32_Processor | Measure -Property LoadPercentage -Average).Average,0)
 $cpuFree   = 100 - $cpuLoad
 $totalMem  = [math]::Round($OS.TotalVisibleMemorySize/1MB,2)
@@ -49,11 +50,11 @@ $diskFreeGB= [math]::Round($diskFree/1GB,2)
 $diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,0) } else {0}
 $uptime = (Get-Date) - $OS.LastBootUpTime
 
-# ---------- New Additions ----------
+# -------- System Card Additions --------
 # CPU Speed
 $cpuSpeed = if ($CPU.MaxClockSpeed) { "$($CPU.MaxClockSpeed) MHz" } else { "N/A" }
 
-# GPU with VRAM
+# GPU + VRAM
 $gpuInfo = if ($GPU) {
     $GPU | ForEach-Object {
         $memGB = if ($_.AdapterRAM) { [math]::Round($_.AdapterRAM/1GB,2) } else { "N/A" }
@@ -61,7 +62,7 @@ $gpuInfo = if ($GPU) {
     } -join "<br/>"
 } else { "None" }
 
-# RAM Type + Speed (color‑coded)
+# RAM Type + Speed (color-coded)
 $ramTypeLookup = @{
     20="DDR";21="DDR2";22="DDR2 FB-DIMM";24="DDR3";26="DDR4";30="LPDDR4";34="DDR5"
 }
@@ -77,14 +78,33 @@ $ramModules = $MemoryModules | ForEach-Object {
 }
 $ramInfo = ($ramModules -join ", ")
 
-# Motherboard Info
+# Motherboard
 $mbInfo = "$($Motherboard.Manufacturer) $($Motherboard.Product)"
 
-# Disk Models + Interfaces
-$diskModels = ($DiskDrives | ForEach-Object { "$($_.Model) ($($_.InterfaceType))" }) -join "<br/>"
-# -----------------------------------
+# Disk SMART Health
+$smartData = @{}
+try {
+    $smartQuery = Get-WmiObject -Namespace root\wmi -Class MSStorageDriver_FailurePredictStatus -ErrorAction SilentlyContinue
+    foreach ($d in $smartQuery) {
+        $smartData[$d.InstanceName] = if ($d.PredictFailure) { "Predicted Failure" } else { "OK" }
+    }
+} catch { }
 
-# Collect Performance Samples (30s)
+$diskDetails = $DiskDrives | ForEach-Object {
+    [PSCustomObject]@{
+        Model        = $_.Model
+        Interface    = $_.InterfaceType
+        SizeGB       = [math]::Round($_.Size/1GB,2)
+        Status       = $_.Status
+        SerialNumber = $_.SerialNumber
+        Firmware     = $_.FirmwareRevision
+        SMARTHealth  = ($smartData.Keys | Where-Object { $_ -like "*$($_.PNPDeviceID)*" } | ForEach-Object { $smartData[$_] }) -join ","
+    }
+}
+
+$diskModels = ($DiskDrives | ForEach-Object { "$($_.Model) ($($_.InterfaceType))" }) -join "<br/>"
+
+# -------- Performance Samples (30s) --------
 $cpuSamples=@();$memSamples=@();$diskSamples=@()
 $totalSamples=15
 for ($i=1;$i -le $totalSamples;$i++) {
@@ -92,9 +112,9 @@ for ($i=1;$i -le $totalSamples;$i++) {
     $cpuNow  = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
     $memNow  = 100 - ((Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue / ($totalMem*1024)) * 100
     $diskNow = (Get-Counter '\PhysicalDisk(_Total)\% Disk Time').CounterSamples.CookedValue
-    $cpuSamples+=[math]::Round($cpuNow,0)
-    $memSamples+=[math]::Round($memNow,0)
-    $diskSamples+=[math]::Round($diskNow,0)
+    $cpuSamples += [math]::Round($cpuNow,0)
+    $memSamples += [math]::Round($memNow,0)
+    $diskSamples+= [math]::Round($diskNow,0)
     Start-Sleep -Seconds 2
 }
 $cpuArr=($cpuSamples -join ",")
@@ -102,7 +122,7 @@ $memArr=($memSamples -join ",")
 $diskArr=($diskSamples -join ",")
 $labels=(0..($cpuSamples.Count-1)|ForEach-Object {$_*2})-join ","
 
-# HTML Report
+# -------- HTML Report --------
 $HTML=@"
 <!DOCTYPE html>
 <html>
@@ -205,6 +225,7 @@ new Chart(document.getElementById('diskRealtime').getContext('2d'),
 
 <div id="Disks" class="tabcontent">
 $(ConvertTo-HTMLTable ($Disks|Select DeviceID,VolumeName,@{n="SizeGB";e={[math]::Round($_.Size/1GB,2)}},@{n="FreeGB";e={[math]::Round($_.FreeSpace/1GB,2)}}) "Logical Disks")
+$(ConvertTo-HTMLTable $diskDetails "Physical Disks (SMART/Serial/Firmware)")
 </div>
 
 <div id="Network" class="tabcontent">$(ConvertTo-HTMLTable $IPInfo "Network Interfaces")</div>
