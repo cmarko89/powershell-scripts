@@ -245,10 +245,23 @@ $(ConvertTo-HTMLTable $diskDetails "Physical Disks (SMART/Serial/Firmware)")
 <div id="Network" class="tabcontent">$(ConvertTo-HTMLTable $IPInfo "Network Interfaces")</div>
 <div id="Printers" class="tabcontent">$(ConvertTo-HTMLTable $Printers "Printers (Minimal)")</div>
 <div id="Services" class="tabcontent">
-$( ($Services | Sort Status,Name | ForEach-Object {
-    $class = switch ($_.Status) { 'Running'{'running'} 'Stopped'{'stopped'} 'Paused'{'paused'} default{'unknown'} }
-    [PSCustomObject]@{ Name=$_.Name; DisplayName=$_.DisplayName; Status="<span class='$class'>$($_.Status)</span>"; StartType=$_.StartType }
-} | ConvertTo-Html -Fragment | Out-String) )
+<h3>Services Overview</h3>
+<div class='table-container'>
+<table>
+<tr><th>Name</th><th>Display Name</th><th>Status</th><th>StartType</th></tr>
+$(
+    $Services | Sort Status,Name | ForEach-Object {
+        $class = switch ($_.Status) {
+            'Running' {'running'}
+            'Stopped' {'stopped'}
+            'Paused'  {'paused'}
+            default   {'unknown'}
+        }
+        "<tr><td>$($_.Name)</td><td>$($_.DisplayName)</td><td><span class='$class'>$($_.Status)</span></td><td>$($_.StartType)</td></tr>"
+    }
+)
+</table>
+</div>
 </div>
 
 <button onclick="topFunction()" id="backToTop">TOP</button>
