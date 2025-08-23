@@ -56,7 +56,7 @@ else {
     $setupExe = Join-Path $driveLetter "setup.exe"
     if (Test-Path $setupExe) {
         Write-Host "Launching Windows Setup for clean install..."
-        Start-Process -FilePath $setupExe -ArgumentList "/auto clean /dynamicupdate disable" -Verb RunAs
+        Start-Process -FilePath $setupExe -ArgumentList "/auto clean /dynamicupdate disable /compactos /compat ignorewarning /eula accep /uninstall disable" -Verb RunAs
     } else {
         Write-Error "setup.exe not found in ISO!"
     }
