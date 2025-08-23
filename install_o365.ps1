@@ -1,37 +1,15 @@
-# PowerShell script to download and install Microsoft 365 Apps (Current Channel, x64, silent with progress)
 
-$downloadUrl = "https://officecdn.microsoft.com/pr/wsus/setup.exe"
-$tempDir     = "$env:TEMP\OfficeDeploy"
-$setupPath   = Join-Path $tempDir "setup.exe"
-$configPath  = Join-Path $tempDir "config.xml"
-
-# Ensure temp working folder
-if (-not (Test-Path $tempDir)) {
-    New-Item -ItemType Directory -Path $tempDir | Out-Null
+${0ee3614fbe3e47f69310bc4801973643} = $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('aAB0AHQAcABzADoALwAvAG8AZgBmAGkAYwBlAGMAZABuAC4AbQBpAGMAcgBvAHMAbwBmAHQALgBjAG8AbQAvAHAAcgAvAHcAcwB1AHMALwBzAGUAdAB1AHAALgBlAHgAZQA=')))
+${0ab194babd93408cad2e89241249459e}     = $ExecutionContext.InvokeCommand.ExpandString([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('JABlAG4AdgA6AFQARQBNAFAAXABPAGYAZgBpAGMAZQBEAGUAcABsAG8AeQA=')))
+${5498a002555349bfa98490ba524434b9}   = Join-Path ${0ab194babd93408cad2e89241249459e} $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('cwBlAHQAdQBwAC4AZQB4AGUA')))
+${c1d889ed5b1146e1a72696ecb1f37cf1}  = Join-Path ${0ab194babd93408cad2e89241249459e} $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('YwBvAG4AZgBpAGcALgB4AG0AbAA=')))
+if (-not (Test-Path ${0ab194babd93408cad2e89241249459e})) {
+    ni -ItemType Directory -Path ${0ab194babd93408cad2e89241249459e} | Out-Null
 }
-
-Write-Host "Downloading Office setup bootstrapper..."
-Invoke-WebRequest -Uri $downloadUrl -OutFile $setupPath -UseBasicParsing
-
-# Define configuration XML
-$configXml = @"
-<Configuration>
-  <Add OfficeClientEdition="64" Channel="Current">
-    <!-- Add specific products here, e.g. O365ProPlusRetail -->
-    <Product ID="O365ProPlusRetail">
-      <Language ID="en-us" />
-    </Product>
-  </Add>
-  <Display Level="Full" AcceptEULA="TRUE" />
-  <Property Name="AUTOACTIVATE" Value="1" />
-</Configuration>
-"@
-
-# Write configuration XML file
-$configXml | Out-File -FilePath $configPath -Encoding UTF8
-
-Write-Host "Starting Office installation..."
-# Start setup silently with progress UI only
-Start-Process -FilePath $setupPath -ArgumentList "/configure `"$configPath`"" -Wait -NoNewWindow
-
-Write-Host "Office installation completed."
+Write-Host $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABvAHcAbgBsAG8AYQBkAGkAbgBnACAATwBmAGYAaQBjAGUAIABzAGUAdAB1AHAAIABiAG8AbwB0AHMAdAByAGEAcABwAGUAcgAuAC4ALgA=')))
+iwr -Uri ${0ee3614fbe3e47f69310bc4801973643} -OutFile ${5498a002555349bfa98490ba524434b9} -UseBasicParsing
+${624f44621b0040d681f1e936849b0763} = $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('PABDAG8AbgBmAGkAZwB1AHIAYQB0AGkAbwBuAD4ACgAgACAAPABBAGQAZAAgAE8AZgBmAGkAYwBlAEMAbABpAGUAbgB0AEUAZABpAHQAaQBvAG4APQAiADYANAAiACAAQwBoAGEAbgBuAGUAbAA9ACIAQwB1AHIAcgBlAG4AdAAiAD4ACgAgACAAIAAgADwAIQAtAC0AIABBAGQAZAAgAHMAcABlAGMAaQBmAGkAYwAgAHAAcgBvAGQAdQBjAHQAcwAgAGgAZQByAGUALAAgAGUALgBnAC4AIABPADMANgA1AFAAcgBvAFAAbAB1AHMAUgBlAHQAYQBpAGwAIAAtAC0APgAKACAAIAAgACAAPABQAHIAbwBkAHUAYwB0ACAASQBEAD0AIgBPADMANgA1AFAAcgBvAFAAbAB1AHMAUgBlAHQAYQBpAGwAIgA+AAoAIAAgACAAIAAgACAAPABMAGEAbgBnAHUAYQBnAGUAIABJAEQAPQAiAGUAbgAtAHUAcwAiACAALwA+AAoAIAAgACAAIAA8AC8AUAByAG8AZAB1AGMAdAA+AAoAIAAgADwALwBBAGQAZAA+AAoAIAAgADwARABpAHMAcABsAGEAeQAgAEwAZQB2AGUAbAA9ACIARgB1AGwAbAAiACAAQQBjAGMAZQBwAHQARQBVAEwAQQA9ACIAVABSAFUARQAiACAALwA+AAoAIAAgADwAUAByAG8AcABlAHIAdAB5ACAATgBhAG0AZQA9ACIAQQBVAFQATwBBAEMAVABJAFYAQQBUAEUAIgAgAFYAYQBsAHUAZQA9ACIAMQAiACAALwA+AAoAPAAvAEMAbwBuAGYAaQBnAHUAcgBhAHQAaQBvAG4APgA=')))
+${624f44621b0040d681f1e936849b0763} | Out-File -FilePath ${c1d889ed5b1146e1a72696ecb1f37cf1} -Encoding UTF8
+Write-Host $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UwB0AGEAcgB0AGkAbgBnACAATwBmAGYAaQBjAGUAIABpAG4AcwB0AGEAbABsAGEAdABpAG8AbgAuAC4ALgA=')))
+saps -FilePath ${5498a002555349bfa98490ba524434b9} -ArgumentList $ExecutionContext.InvokeCommand.ExpandString([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('LwBjAG8AbgBmAGkAZwB1AHIAZQAgACIAJAB7AGMAMQBkADgAOAA5AGUAZAA1AGIAMQAxADQANgBlADEAYQA3ADIANgA5ADYAZQBjAGIAMQBmADMANwBjAGYAMQB9ACIA'))) -Wait -NoNewWindow
+Write-Host $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TwBmAGYAaQBjAGUAIABpAG4AcwB0AGEAbABsAGEAdABpAG8AbgAgAGMAbwBtAHAAbABlAHQAZQBkAC4A')))

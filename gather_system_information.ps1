@@ -1,89 +1,72 @@
-<#
-System Report Script
-Emkraan branded
-Dark HTML tabbed dashboard with CPU/Memory/Disk/Network charts, system info, performance graphs,
-printer/service tables, and back to top button. Extended System Card & Disk Tab.
-#>
-$ErrorActionPreference = "SilentlyContinue"
-$tempDir  = $env:TEMP
-$htmlPath = Join-Path $tempDir "system_report.html"
-Write-Host "Collecting system inventory..." -ForegroundColor Cyan
 
-# -------- Data Collection --------
-$ComputerSystem = Get-CimInstance Win32_ComputerSystem
-$CPU            = Get-CimInstance Win32_Processor
-$GPU            = Get-CimInstance Win32_VideoController
-$MemoryModules  = Get-CimInstance Win32_PhysicalMemory
-$Disks          = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3"
-$DiskDrives     = Get-CimInstance Win32_DiskDrive
-$OS             = Get-CimInstance Win32_OperatingSystem
-$Motherboard    = Get-CimInstance Win32_BaseBoard
-$NICs           = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled }
-$Printers       = Get-CimInstance Win32_Printer | Select Name,DriverName,PortName,Default,WorkOffline
-$USBDevices     = Get-PnpDevice | Where-Object { $_.InstanceId -like "USB*" } | Select Class,FriendlyName,Manufacturer,Status,InstanceId
-$Services       = Get-Service | Select Name,DisplayName,Status,StartType
-
-$IPInfo = foreach ($nic in $NICs) {
+$ErrorActionPreference = $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UwBpAGwAZQBuAHQAbAB5AEMAbwBuAHQAaQBuAHUAZQA=')))
+${b3883197eaa7469b886beaa378092673}  = $env:TEMP
+${a24b2a9da61e4006ab88ce9dc5ee00f7} = Join-Path ${b3883197eaa7469b886beaa378092673} $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('cwB5AHMAdABlAG0AXwByAGUAcABvAHIAdAAuAGgAdABtAGwA')))
+Write-Host $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('QwBvAGwAbABlAGMAdABpAG4AZwAgAHMAeQBzAHQAZQBtACAAaQBuAHYAZQBuAHQAbwByAHkALgAuAC4A'))) -ForegroundColor Cyan
+${e83c2afc2fd94f328e12a80077189f70} = Get-CimInstance Win32_ComputerSystem
+${302dc8f6ba1644b4806af920d5b01841}            = Get-CimInstance Win32_Processor
+${fdfee5cfdb084b4aac0f32739d79571a}            = Get-CimInstance Win32_VideoController
+${717b04a8629a4b408456ad2ec6453020}  = Get-CimInstance Win32_PhysicalMemory
+${8b2694cb577e4b9a91302dd70590d5cc}          = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3"
+${8bbbcc0ebf1e4bf78d8010823fa7df05}     = Get-CimInstance Win32_DiskDrive
+${ca09ec8e54f441cbb897d3e7d3186667}             = Get-CimInstance Win32_OperatingSystem
+${9d522c68a48b417bb8250e9ecc036753}    = Get-CimInstance Win32_BaseBoard
+${c33a1303a8b04b8fad5a1f6a057cb8a0}           = Get-CimInstance Win32_NetworkAdapterConfiguration | ? { $_.IPEnabled }
+${251a4370d4f6424aa37fbfa200b7441a}       = Get-CimInstance Win32_Printer | Select Name,DriverName,PortName,Default,WorkOffline
+${c5f5eb90904e4d89967fdbb73377a61e}     = Get-PnpDevice | ? { $_.InstanceId -like $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('VQBTAEIAKgA='))) } | Select Class,FriendlyName,Manufacturer,Status,InstanceId
+${60b86701419f4686b0041aff4952dfe9}       = gsv | Select Name,DisplayName,Status,StartType
+${6132aa9d2e8f4f0cbc9bb2bdafc98f51} = foreach (${6d825b612c3341f3bcc0537368fa128b} in ${c33a1303a8b04b8fad5a1f6a057cb8a0}) {
     [PSCustomObject]@{
-        Description    = $nic.Description
-        MACAddress     = $nic.MACAddress
-        IPAddress      = $nic.IPAddress -join ", "
-        DefaultGateway = $nic.DefaultIPGateway -join ", "
-        DNSServers     = $nic.DNSServerSearchOrder -join ", "
+        Description    = ${6d825b612c3341f3bcc0537368fa128b}.Description
+        MACAddress     = ${6d825b612c3341f3bcc0537368fa128b}.MACAddress
+        IPAddress      = ${6d825b612c3341f3bcc0537368fa128b}.IPAddress -join ", "
+        DefaultGateway = ${6d825b612c3341f3bcc0537368fa128b}.DefaultIPGateway -join ", "
+        DNSServers     = ${6d825b612c3341f3bcc0537368fa128b}.DNSServerSearchOrder -join ", "
     }
 }
-
-# -------- Snapshot values --------
-$cpuLoad   = [math]::Round((Get-CimInstance Win32_Processor | Measure -Property LoadPercentage -Average).Average,0)
-$cpuFree   = 100 - $cpuLoad
-$totalMem  = [math]::Round($OS.TotalVisibleMemorySize/1MB,2)
-$freeMem   = [math]::Round($OS.FreePhysicalMemory/1MB,2)
-$usedMem   = $totalMem - $freeMem
-$memUtil   = if ($totalMem -gt 0) {[math]::Round(($usedMem/$totalMem)*100,0)} else {0}
-$diskSum   = ($Disks | Measure -Property Size -Sum).Sum
-$diskFree  = ($Disks | Measure -Property FreeSpace -Sum).Sum
-$diskUsed  = $diskSum - $diskFree
-$diskUsedGB= [math]::Round($diskUsed/1GB,2)
-$diskFreeGB= [math]::Round($diskFree/1GB,2)
-$diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,0) } else {0}
-$uptime = (Get-Date) - $OS.LastBootUpTime
-
-# -------- System Info --------
-$cpuSpeed = if ($CPU.MaxClockSpeed) { "$($CPU.MaxClockSpeed) MHz" } else { "N/A" }
-
-$gpuInfo = if ($GPU) {
-    $GPU | ForEach-Object {
-        $memGB = if ($_.AdapterRAM) { [math]::Round($_.AdapterRAM/1GB,2) } else { "N/A" }
-        "$($_.Name) (${memGB} GB)"
-    } -join "<br/>"
-} else { "None" }
-
-$ramTypeLookup = @{
-    20="DDR";21="DDR2";22="DDR2 FB-DIMM";24="DDR3";26="DDR4";30="LPDDR4";34="DDR5"
+${52080a1ce5c447e6bb748a672dbe13ee}   = [math]::Round((Get-CimInstance Win32_Processor | Measure -Property LoadPercentage -Average).Average,0)
+${8ebe94956ebc4aaa8ece23344e648546}   = 100 - ${52080a1ce5c447e6bb748a672dbe13ee}
+${3f2aa4209431414d81228a504a383266}  = [math]::Round(${ca09ec8e54f441cbb897d3e7d3186667}.TotalVisibleMemorySize/1MB,2)
+${7ce95356524b431a930ddf6d1e0fe942}   = [math]::Round(${ca09ec8e54f441cbb897d3e7d3186667}.FreePhysicalMemory/1MB,2)
+${45d160df8bff4b9b9f6f2b4b9aedd2fe}   = ${3f2aa4209431414d81228a504a383266} - ${7ce95356524b431a930ddf6d1e0fe942}
+${8bf2dc401b1445628ea7ef918092c8f7}   = if (${3f2aa4209431414d81228a504a383266} -gt 0) {[math]::Round((${45d160df8bff4b9b9f6f2b4b9aedd2fe}/${3f2aa4209431414d81228a504a383266})*100,0)} else {0}
+${4350fa93db68444795027de91f0c1413}   = (${8b2694cb577e4b9a91302dd70590d5cc} | Measure -Property Size -Sum).Sum
+${1d8a4ed0dae043279b25f2018d0627f4}  = (${8b2694cb577e4b9a91302dd70590d5cc} | Measure -Property FreeSpace -Sum).Sum
+${c8f13ea305d042d6b5726f80de795cbf}  = ${4350fa93db68444795027de91f0c1413} - ${1d8a4ed0dae043279b25f2018d0627f4}
+${2d6d030ad2614feb93c92b4b03c69ee0}= [math]::Round(${c8f13ea305d042d6b5726f80de795cbf}/1GB,2)
+${17f4eaa5be8a411b809955385d7a79dd}= [math]::Round(${1d8a4ed0dae043279b25f2018d0627f4}/1GB,2)
+${e22221c4f2b64ffaa973de1b9eb79f50} = if (${4350fa93db68444795027de91f0c1413} -gt 0) { [math]::Round((${c8f13ea305d042d6b5726f80de795cbf}/${4350fa93db68444795027de91f0c1413})*100,0) } else {0}
+${6c0432df93b34227a5bfea60e8123af8} = (Get-Date) - ${ca09ec8e54f441cbb897d3e7d3186667}.LastBootUpTime
+${d4b2396c01bf40249289161545b44807} = if (${302dc8f6ba1644b4806af920d5b01841}.MaxClockSpeed) { "$(${302dc8f6ba1644b4806af920d5b01841}.MaxClockSpeed) MHz" } else { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TgAvAEEA'))) }
+${1ed8468541c94aeaa7bb1db51da63883} = if (${fdfee5cfdb084b4aac0f32739d79571a}) {
+    ${fdfee5cfdb084b4aac0f32739d79571a} | % {
+        ${a5a9cf9e94a34bdd9af15fb22ab516a1} = if ($_.AdapterRAM) { [math]::Round($_.AdapterRAM/1GB,2) } else { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TgAvAEEA'))) }
+        "$($_.Name) (${a5a9cf9e94a34bdd9af15fb22ab516a1} GB)"
+    } -join $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('PABiAHIALwA+AA==')))
+} else { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TgBvAG4AZQA='))) }
+${8729d131072a4e48b31c59064e13d090} = @{
+    20=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIA')));21=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIAMgA=')));22=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIAMgAgAEYAQgAtAEQASQBNAE0A')));24=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIAMwA=')));26=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIANAA=')));30=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TABQAEQARABSADQA')));34=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIANQA=')))
 }
-$ramModules = $MemoryModules | ForEach-Object {
-    $t = if ($ramTypeLookup.ContainsKey($_.MemoryType)) { $ramTypeLookup[$_.MemoryType] } else { "Unknown" }
-    $cssClass = switch ($t) {
-        "DDR3" { "ddr3" }
-        "DDR4" { "ddr4" }
-        "DDR5" { "ddr5" }
-        default { "unknown" }
+${91f17fc70bde40429c69bf4546876645} = ${717b04a8629a4b408456ad2ec6453020} | % {
+    ${5c707f83a7fd42dfaad5a94615e8d000} = if (${8729d131072a4e48b31c59064e13d090}.ContainsKey($_.MemoryType)) { ${8729d131072a4e48b31c59064e13d090}[$_.MemoryType] } else { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('VQBuAGsAbgBvAHcAbgA='))) }
+    ${e977aeed38c84856b00d5f660e89515c} = switch (${5c707f83a7fd42dfaad5a94615e8d000}) {
+        $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIAMwA='))) { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('ZABkAHIAMwA='))) }
+        $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIANAA='))) { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('ZABkAHIANAA='))) }
+        $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RABEAFIANQA='))) { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('ZABkAHIANQA='))) }
+        default { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('dQBuAGsAbgBvAHcAbgA='))) }
     }
-    "<span class='$cssClass'>$t $($_.Speed) MHz</span>"
+    "<span class='${e977aeed38c84856b00d5f660e89515c}'>${5c707f83a7fd42dfaad5a94615e8d000} $($_.Speed) MHz</span>"
 }
-$ramInfo = ($ramModules -join ", ")
-$mbInfo = "$($Motherboard.Manufacturer) $($Motherboard.Product)"
-
-# Disk SMART Health with icons
-$smartData = @{}
+${79c8cee1eee74fae912f7485a80f1b1e} = (${91f17fc70bde40429c69bf4546876645} -join ", ")
+${7f7e5eb004dc4210ac90658abdc7b4f6} = "$(${9d522c68a48b417bb8250e9ecc036753}.Manufacturer) $(${9d522c68a48b417bb8250e9ecc036753}.Product)"
+${eaf42be71b4f4855b74b872c2d8c2a02} = @{}
 try {
-    $smartQuery = Get-WmiObject -Namespace root\wmi -Class MSStorageDriver_FailurePredictStatus -ErrorAction SilentlyContinue
-    foreach ($d in $smartQuery) {
-        $smartData[$d.InstanceName] = if ($d.PredictFailure) { "❌ Predicted Failure" } else { "✅ OK" }
+    ${de94979b8c4942508d004978fadbee4e} = gwmi -Namespace root\wmi -Class MSStorageDriver_FailurePredictStatus -ErrorAction SilentlyContinue
+    foreach (${5d9dc8db1bf0428697befafb768af6a2} in ${de94979b8c4942508d004978fadbee4e}) {
+        ${eaf42be71b4f4855b74b872c2d8c2a02}[${5d9dc8db1bf0428697befafb768af6a2}.InstanceName] = if (${5d9dc8db1bf0428697befafb768af6a2}.PredictFailure) { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TCcgAFAAcgBlAGQAaQBjAHQAZQBkACAARgBhAGkAbAB1AHIAZQA='))) } else { $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('BScgAE8ASwA='))) }
     }
 } catch { }
-
-$diskDetails = $DiskDrives | ForEach-Object {
+${efbeb80be4584434869893090a1806fc} = ${8bbbcc0ebf1e4bf78d8010823fa7df05} | % {
     [PSCustomObject]@{
         Model        = $_.Model
         Interface    = $_.InterfaceType
@@ -91,49 +74,41 @@ $diskDetails = $DiskDrives | ForEach-Object {
         Status       = $_.Status
         SerialNumber = $_.SerialNumber
         Firmware     = $_.FirmwareRevision
-        SMARTHealth  = (( $smartData.Keys |
-            Where-Object { $_ -like "*$($_.PNPDeviceID)*" } |
-            ForEach-Object { $smartData[$_] }
+        SMARTHealth  = (( ${eaf42be71b4f4855b74b872c2d8c2a02}.Keys |
+            ? { $_ -like "*$($_.PNPDeviceID)*" } |
+            % { ${eaf42be71b4f4855b74b872c2d8c2a02}[$_] }
         ) -join ",")
     }
 }
-$diskModels = ($DiskDrives | ForEach-Object { "$($_.Model) ($($_.InterfaceType))" }) -join "<br/>"
-
-# -------- Performance Samples (CPU/Mem/Disk/Net) --------
-$cpuSamples=@();$memSamples=@();$diskSamples=@();$netSamples=@()
-$totalSamples=15
-$nicPerfName = (Get-Counter '\Network Interface(*)\Bytes Total/sec').CounterSamples[0].InstanceName
-for ($i=1;$i -le $totalSamples;$i++) {
-    Write-Progress -Activity "Collecting performance samples" -Status "Sample $i of $totalSamples..." -PercentComplete (($i/$totalSamples)*100)
-    $cpuNow  = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
-    $memNow  = 100 - ((Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue / ($totalMem*1024)) * 100
-    $diskNow = (Get-Counter '\PhysicalDisk(_Total)\% Disk Time').CounterSamples.CookedValue
-    $netNow  = (Get-Counter "\Network Interface($nicPerfName)\Bytes Total/sec").CounterSamples.CookedValue
-    $cpuSamples += [math]::Round($cpuNow,0)
-    $memSamples += [math]::Round($memNow,0)
-    $diskSamples+= [math]::Round($diskNow,0)
-    $netSamples += [math]::Round($netNow/1KB,0)  # KB/s
-    Start-Sleep -Seconds 2
+${d574959ab60049268b52c0357456fe23} = (${8bbbcc0ebf1e4bf78d8010823fa7df05} | % { "$($_.Model) ($($_.InterfaceType))" }) -join $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('PABiAHIALwA+AA==')))
+${cedd44f66fd340ed943263a712c61a7b}=@();${1335de6364f1443fa77678ed1aedf8b9}=@();${c649edc6c71342d9b11592d2127f7ca5}=@();${6f92d22e5b3148cea0aaf65d67793990}=@()
+${1a44679c16c643d0974bd8460542fe68}=15
+${2af65d050d59479cb4f4899155b8eaf7} = (Get-Counter $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('XABOAGUAdAB3AG8AcgBrACAASQBuAHQAZQByAGYAYQBjAGUAKAAqACkAXABCAHkAdABlAHMAIABUAG8AdABhAGwALwBzAGUAYwA=')))).CounterSamples[0].InstanceName
+for (${2b7693e08c774e268770ba117f3a366c}=1;${2b7693e08c774e268770ba117f3a366c} -le ${1a44679c16c643d0974bd8460542fe68};${2b7693e08c774e268770ba117f3a366c}++) {
+    Write-Progress -Activity $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('QwBvAGwAbABlAGMAdABpAG4AZwAgAHAAZQByAGYAbwByAG0AYQBuAGMAZQAgAHMAYQBtAHAAbABlAHMA'))) -Status $ExecutionContext.InvokeCommand.ExpandString([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UwBhAG0AcABsAGUAIAAkAHsAMgBiADcANgA5ADMAZQAwADgAYwA3ADcANABlADIANgA4ADcANwAwAGIAYQAxADEANwBmADMAYQAzADYANgBjAH0AIABvAGYAIAAkAHsAMQBhADQANAA2ADcAOQBjADEANgBjADYANAAzAGQAMAA5ADcANABiAGQAOAA0ADYAMAA1ADQAMgBmAGUANgA4AH0ALgAuAC4A'))) -PercentComplete ((${2b7693e08c774e268770ba117f3a366c}/${1a44679c16c643d0974bd8460542fe68})*100)
+    ${d8354bea76a04d739fd609f191e54de9}  = (Get-Counter $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('XABQAHIAbwBjAGUAcwBzAG8AcgAoAF8AVABvAHQAYQBsACkAXAAlACAAUAByAG8AYwBlAHMAcwBvAHIAIABUAGkAbQBlAA==')))).CounterSamples.CookedValue
+    ${6d5ebbb96bcf4e55874f27d291306217}  = 100 - ((Get-Counter $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('XABNAGUAbQBvAHIAeQBcAEEAdgBhAGkAbABhAGIAbABlACAATQBCAHkAdABlAHMA')))).CounterSamples.CookedValue / (${3f2aa4209431414d81228a504a383266}*1024)) * 100
+    ${2dea8bfd998a475daf2f30cab12244ae} = (Get-Counter $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('XABQAGgAeQBzAGkAYwBhAGwARABpAHMAawAoAF8AVABvAHQAYQBsACkAXAAlACAARABpAHMAawAgAFQAaQBtAGUA')))).CounterSamples.CookedValue
+    ${e07af54ab5544205b861c4c9e76e1ce2}  = (Get-Counter $ExecutionContext.InvokeCommand.ExpandString([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('XABOAGUAdAB3AG8AcgBrACAASQBuAHQAZQByAGYAYQBjAGUAKAAkAHsAMgBhAGYANgA1AGQAMAA1ADAAZAA1ADkANAA3ADkAYwBiADQAZgA0ADgAOQA5ADEANQA1AGIAOABlAGEAZgA3AH0AKQBcAEIAeQB0AGUAcwAgAFQAbwB0AGEAbAAvAHMAZQBjAA==')))).CounterSamples.CookedValue
+    ${cedd44f66fd340ed943263a712c61a7b} += [math]::Round(${d8354bea76a04d739fd609f191e54de9},0)
+    ${1335de6364f1443fa77678ed1aedf8b9} += [math]::Round(${6d5ebbb96bcf4e55874f27d291306217},0)
+    ${c649edc6c71342d9b11592d2127f7ca5}+= [math]::Round(${2dea8bfd998a475daf2f30cab12244ae},0)
+    ${6f92d22e5b3148cea0aaf65d67793990} += [math]::Round(${e07af54ab5544205b861c4c9e76e1ce2}/1KB,0)  
+    sleep -Seconds 2
 }
-
-# Export arrays as JSON for safe JS injection
-$cpuArr = ($cpuSamples | ConvertTo-Json -Compress)
-$memArr = ($memSamples | ConvertTo-Json -Compress)
-$diskArr= ($diskSamples| ConvertTo-Json -Compress)
-$netArr = ($netSamples| ConvertTo-Json -Compress)
-$labels = (0..($cpuSamples.Count-1) | ForEach-Object {$_*2} | ConvertTo-Json -Compress)
-
-# -------- Helper function --------
-function ConvertTo-HTMLTable($data, $title) {
-    if(-not $data){ return "" }
-    $html = "<div class='table-container'><h3>$title</h3>"
-    $html += ($data | ConvertTo-Html -Fragment | Out-String)
-    $html += "</div>"
-    return $html
+${a86262bf487c4566b7d146d35c8fd8a1} = (${cedd44f66fd340ed943263a712c61a7b} | ConvertTo-Json -Compress)
+${0a61e2fa351a440096a560ed3f7a4175} = (${1335de6364f1443fa77678ed1aedf8b9} | ConvertTo-Json -Compress)
+${6f76c904798e464db404c8ca43477168}= (${c649edc6c71342d9b11592d2127f7ca5}| ConvertTo-Json -Compress)
+${fc2a8bffb06d49e895f2bb1c0dbd2179} = (${6f92d22e5b3148cea0aaf65d67793990}| ConvertTo-Json -Compress)
+${d37dca35a9d547b4a9d310feb5d3fcca} = (0..(${cedd44f66fd340ed943263a712c61a7b}.Count-1) | % {$_*2} | ConvertTo-Json -Compress)
+function a19ead6a6bfe465ba01afaf5ec8063eb(${a31385e961e14553af0585c191dd4d21}, ${cde7912d52f74dacb9b9d43b265f1f44}) {
+    if(-not ${a31385e961e14553af0585c191dd4d21}){ return "" }
+    ${96173ce592454e53aad294b15fbd4e76} = $ExecutionContext.InvokeCommand.ExpandString([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('PABkAGkAdgAgAGMAbABhAHMAcwA9ACcAdABhAGIAbABlAC0AYwBvAG4AdABhAGkAbgBlAHIAJwA+ADwAaAAzAD4AJAB7AGMAZABlADcAOQAxADIAZAA1ADIAZgA3ADQAZABhAGMAYgA5AGIAOQBkADQAMwBiADIANgA1AGYAMQBmADQANAB9ADwALwBoADMAPgA=')))
+    ${96173ce592454e53aad294b15fbd4e76} += (${a31385e961e14553af0585c191dd4d21} | ConvertTo-Html -Fragment | Out-String)
+    ${96173ce592454e53aad294b15fbd4e76} += $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('PAAvAGQAaQB2AD4A')))
+    return ${96173ce592454e53aad294b15fbd4e76}
 }
-
-# -------- HTML Report --------
-$HTML=@"
+${96173ce592454e53aad294b15fbd4e76}=@"
 <!DOCTYPE html>
 <html>
 <head>
@@ -178,19 +153,19 @@ window.onscroll=function(){var b=document.getElementById("backToTop");if(documen
 function topFunction(){window.scrollTo({top:0,behavior:'smooth'});}
 window.onload=function(){
 new Chart(document.getElementById('cpuChartSummary').getContext('2d'),
-{type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[$cpuLoad,$cpuFree],backgroundColor:['#E53935','#43A047']}]}});
+{type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${52080a1ce5c447e6bb748a672dbe13ee},${8ebe94956ebc4aaa8ece23344e648546}],backgroundColor:['#E53935','#43A047']}]}});
 new Chart(document.getElementById('memChartSummary').getContext('2d'),
-{type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[$usedMem,$freeMem],backgroundColor:['#1E88E5','#757575']}]}});
+{type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${45d160df8bff4b9b9f6f2b4b9aedd2fe},${7ce95356524b431a930ddf6d1e0fe942}],backgroundColor:['#1E88E5','#757575']}]}});
 new Chart(document.getElementById('diskChartSummary').getContext('2d'),
-{type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[$diskUsedGB,$diskFreeGB],backgroundColor:['#8E24AA','#00897B']}]}});
+{type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[${2d6d030ad2614feb93c92b4b03c69ee0},${17f4eaa5be8a411b809955385d7a79dd}],backgroundColor:['#8E24AA','#00897B']}]}});
 new Chart(document.getElementById('cpuRealtime').getContext('2d'),
-{type:'line',data:{labels:$labels,datasets:[{label:'CPU %',data:$cpuArr,borderColor:'#E53935',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+{type:'line',data:{labels:${d37dca35a9d547b4a9d310feb5d3fcca},datasets:[{label:'CPU %',data:${a86262bf487c4566b7d146d35c8fd8a1},borderColor:'#E53935',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
 new Chart(document.getElementById('memRealtime').getContext('2d'),
-{type:'line',data:{labels:$labels,datasets:[{label:'Memory %',data:$memArr,borderColor:'#1E88E5',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+{type:'line',data:{labels:${d37dca35a9d547b4a9d310feb5d3fcca},datasets:[{label:'Memory %',data:${0a61e2fa351a440096a560ed3f7a4175},borderColor:'#1E88E5',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
 new Chart(document.getElementById('diskRealtime').getContext('2d'),
-{type:'line',data:{labels:$labels,datasets:[{label:'Disk %',data:$diskArr,borderColor:'#8E24AA',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+{type:'line',data:{labels:${d37dca35a9d547b4a9d310feb5d3fcca},datasets:[{label:'Disk %',data:${6f76c904798e464db404c8ca43477168},borderColor:'#8E24AA',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
 new Chart(document.getElementById('netRealtime').getContext('2d'),
-{type:'line',data:{labels:$labels,datasets:[{label:'Network KB/s',data:$netArr,borderColor:'#00ACC1',fill:false}]},options:{scales:{y:{beginAtZero:true}}}});
+{type:'line',data:{labels:${d37dca35a9d547b4a9d310feb5d3fcca},datasets:[{label:'Network KB/s',data:${fc2a8bffb06d49e895f2bb1c0dbd2179},borderColor:'#00ACC1',fill:false}]},options:{scales:{y:{beginAtZero:true}}}});
 document.querySelector('.tablink').click();
 }
 </script>
@@ -199,7 +174,7 @@ document.querySelector('.tablink').click();
 <div class="logo"><img src="https://github.com/cmarko89/static-content/raw/main/logo-transparent-slim.png"></div>
 <h1>System Inventory & Performance Report</h1>
 <p><span class="valueHeader">Computer:</span> <span class="valueData">$env:COMPUTERNAME</span> &nbsp;&nbsp;
-   <span class="valueHeader">Model:</span> <span class="valueData">$($ComputerSystem.Model)</span> &nbsp;&nbsp;
+   <span class="valueHeader">Model:</span> <span class="valueData">$(${e83c2afc2fd94f328e12a80077189f70}.Model)</span> &nbsp;&nbsp;
    <span class="valueHeader">User:</span> <span class="valueData">$env:USERNAME</span> &nbsp;&nbsp;
    <span class="valueHeader">Generated:</span> <span class="valueData">$(Get-Date)</span></p>
 <div class="tab">
@@ -213,19 +188,19 @@ document.querySelector('.tablink').click();
 
 <div id="Summary" class="tabcontent">
 <div class="dashboard">
-  <div class="card"><h2>CPU</h2><canvas id="cpuChartSummary"></canvas><p>$cpuLoad% Utilization</p></div>
-  <div class="card"><h2>Memory</h2><canvas id="memChartSummary"></canvas><p>$memUtil% Utilization<br/>$usedMem / $totalMem GB</p></div>
-  <div class="card"><h2>Disk</h2><canvas id="diskChartSummary"></canvas><p>$diskUsedPct% Used<br/>Total: $([math]::Round($diskSum/1GB,2)) GB</p></div>
+  <div class="card"><h2>CPU</h2><canvas id="cpuChartSummary"></canvas><p>${52080a1ce5c447e6bb748a672dbe13ee}% Utilization</p></div>
+  <div class="card"><h2>Memory</h2><canvas id="memChartSummary"></canvas><p>${8bf2dc401b1445628ea7ef918092c8f7}% Utilization<br/>${45d160df8bff4b9b9f6f2b4b9aedd2fe} / ${3f2aa4209431414d81228a504a383266} GB</p></div>
+  <div class="card"><h2>Disk</h2><canvas id="diskChartSummary"></canvas><p>${e22221c4f2b64ffaa973de1b9eb79f50}% Used<br/>Total: $([math]::Round(${4350fa93db68444795027de91f0c1413}/1GB,2)) GB</p></div>
   <div class="card"><h2>System</h2>
-   <p><b>OS:</b> $($OS.Caption) ($($OS.OSArchitecture))</p>
-   <p><b>CPU:</b> $($CPU.Name) ($cpuSpeed)</p>
-   <p><b>GPU:</b><br/> $gpuInfo</p>
-   <p><b>Memory:</b><br/> $ramInfo</p>
-   <p><b>Motherboard:</b> $mbInfo</p>
-   <p><b>Disks:</b><br/> $diskModels</p>
-   <p><b>Uptime:</b> $([string]::Format("{0:%d}d {0:%h}h {0:%m}m",$uptime))</p>
-   <p><b>Printers:</b> $($Printers.Count) | <b>USB Devices:</b> $($USBDevices.Count)</p>
-   <p><b>Services:</b> $($Services.Count)</p>
+   <p><b>OS:</b> $(${ca09ec8e54f441cbb897d3e7d3186667}.Caption) ($(${ca09ec8e54f441cbb897d3e7d3186667}.OSArchitecture))</p>
+   <p><b>CPU:</b> $(${302dc8f6ba1644b4806af920d5b01841}.Name) (${d4b2396c01bf40249289161545b44807})</p>
+   <p><b>GPU:</b><br/> ${1ed8468541c94aeaa7bb1db51da63883}</p>
+   <p><b>Memory:</b><br/> ${79c8cee1eee74fae912f7485a80f1b1e}</p>
+   <p><b>Motherboard:</b> ${7f7e5eb004dc4210ac90658abdc7b4f6}</p>
+   <p><b>Disks:</b><br/> ${d574959ab60049268b52c0357456fe23}</p>
+   <p><b>Uptime:</b> $([string]::Format($([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('ewAwADoAJQBkAH0AZAAgAHsAMAA6ACUAaAB9AGgAIAB7ADAAOgAlAG0AfQBtAA=='))),${6c0432df93b34227a5bfea60e8123af8}))</p>
+   <p><b>Printers:</b> $(${251a4370d4f6424aa37fbfa200b7441a}.Count) | <b>USB Devices:</b> $(${c5f5eb90904e4d89967fdbb73377a61e}.Count)</p>
+   <p><b>Services:</b> $(${60b86701419f4686b0041aff4952dfe9}.Count)</p>
   </div>
 </div>
 </div>
@@ -239,26 +214,26 @@ document.querySelector('.tablink').click();
 </div>
 
 <div id="Disks" class="tabcontent">
-$(ConvertTo-HTMLTable ($Disks|Select DeviceID,VolumeName,@{n="SizeGB";e={[math]::Round($_.Size/1GB,2)}},@{n="FreeGB";e={[math]::Round($_.FreeSpace/1GB,2)}}) "Logical Disks")
-$(ConvertTo-HTMLTable $diskDetails "Physical Disks (SMART/Serial/Firmware)")
+$(a19ead6a6bfe465ba01afaf5ec8063eb (${8b2694cb577e4b9a91302dd70590d5cc}|Select DeviceID,VolumeName,@{n=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UwBpAHoAZQBHAEIA')));e={[math]::Round($_.Size/1GB,2)}},@{n=$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('RgByAGUAZQBHAEIA')));e={[math]::Round($_.FreeSpace/1GB,2)}}) $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TABvAGcAaQBjAGEAbAAgAEQAaQBzAGsAcwA='))))
+$(a19ead6a6bfe465ba01afaf5ec8063eb ${efbeb80be4584434869893090a1806fc} $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UABoAHkAcwBpAGMAYQBsACAARABpAHMAawBzACAAKABTAE0AQQBSAFQALwBTAGUAcgBpAGEAbAAvAEYAaQByAG0AdwBhAHIAZQApAA=='))))
 </div>
 
-<div id="Network" class="tabcontent">$(ConvertTo-HTMLTable $IPInfo "Network Interfaces")</div>
-<div id="Printers" class="tabcontent">$(ConvertTo-HTMLTable $Printers "Printers (Minimal)")</div>
+<div id="Network" class="tabcontent">$(a19ead6a6bfe465ba01afaf5ec8063eb ${6132aa9d2e8f4f0cbc9bb2bdafc98f51} $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('TgBlAHQAdwBvAHIAawAgAEkAbgB0AGUAcgBmAGEAYwBlAHMA'))))</div>
+<div id="Printers" class="tabcontent">$(a19ead6a6bfe465ba01afaf5ec8063eb ${251a4370d4f6424aa37fbfa200b7441a} $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UAByAGkAbgB0AGUAcgBzACAAKABNAGkAbgBpAG0AYQBsACkA'))))</div>
 <div id="Services" class="tabcontent">
 <h3>Services Overview</h3>
 <div class='table-container'>
 <table>
 <tr><th>Name</th><th>Display Name</th><th>Status</th><th>StartType</th></tr>
 $(
-    $Services | Sort Status,Name | ForEach-Object {
-        $class = switch ($_.Status) {
-            'Running' {'running'}
-            'Stopped' {'stopped'}
-            'Paused'  {'paused'}
-            default   {'unknown'}
+    ${60b86701419f4686b0041aff4952dfe9} | Sort Status,Name | % {
+        ${7b8a7667bfdf40cfbb05519782e0cd07} = switch ($_.Status) {
+            $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UgB1AG4AbgBpAG4AZwA='))) {$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('cgB1AG4AbgBpAG4AZwA=')))}
+            $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UwB0AG8AcABwAGUAZAA='))) {$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('cwB0AG8AcABwAGUAZAA=')))}
+            $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('UABhAHUAcwBlAGQA')))  {$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('cABhAHUAcwBlAGQA')))}
+            default   {$([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('dQBuAGsAbgBvAHcAbgA=')))}
         }
-        "<tr><td>$($_.Name)</td><td>$($_.DisplayName)</td><td><span class='$class'>$($_.Status)</span></td><td>$($_.StartType)</td></tr>"
+        "<tr><td>$($_.Name)</td><td>$($_.DisplayName)</td><td><span class='${7b8a7667bfdf40cfbb05519782e0cd07}'>$($_.Status)</span></td><td>$($_.StartType)</td></tr>"
     }
 )
 </table>
@@ -270,8 +245,6 @@ $(
 </body>
 </html>
 "@
-
-# Save & Launch
-$HTML | Set-Content $htmlPath -Encoding UTF8
-Start-Process $htmlPath
-Write-Host "HTML report saved to $htmlPath" -ForegroundColor Green
+${96173ce592454e53aad294b15fbd4e76} | sc ${a24b2a9da61e4006ab88ce9dc5ee00f7} -Encoding UTF8
+saps ${a24b2a9da61e4006ab88ce9dc5ee00f7}
+Write-Host $ExecutionContext.InvokeCommand.ExpandString([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('SABUAE0ATAAgAHIAZQBwAG8AcgB0ACAAcwBhAHYAZQBkACAAdABvACAAJAB7AGEAMgA0AGIAMgBhADkAZABhADYAMQBlADQAMAAwADYAYQBiADgAOABjAGUAOQBkAGMANQBlAGUAMAAwAGYANwB9AA=='))) -ForegroundColor Green

