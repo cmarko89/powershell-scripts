@@ -114,11 +114,13 @@ for ($i=1;$i -le $totalSamples;$i++) {
     $netSamples += [math]::Round($netNow/1KB,0)  # KB/s
     Start-Sleep -Seconds 2
 }
-$cpuArr=($cpuSamples -join ",")
-$memArr=($memSamples -join ",")
-$diskArr=($diskSamples -join ",")
-$netArr=($netSamples -join ",")
-$labels=(0..($cpuSamples.Count-1)|ForEach-Object {$_*2})-join ","
+
+# Export arrays as JSON for safe JS injection
+$cpuArr = ($cpuSamples | ConvertTo-Json -Compress)
+$memArr = ($memSamples | ConvertTo-Json -Compress)
+$diskArr= ($diskSamples| ConvertTo-Json -Compress)
+$netArr = ($netSamples| ConvertTo-Json -Compress)
+$labels = (0..($cpuSamples.Count-1) | ForEach-Object {$_*2} | ConvertTo-Json -Compress)
 
 # -------- Helper function --------
 function ConvertTo-HTMLTable($data, $title) {
@@ -181,13 +183,13 @@ new Chart(document.getElementById('memChartSummary').getContext('2d'),
 new Chart(document.getElementById('diskChartSummary').getContext('2d'),
 {type:'doughnut',data:{labels:['Used','Free'],datasets:[{data:[$diskUsedGB,$diskFreeGB],backgroundColor:['#8E24AA','#00897B']}]}});
 new Chart(document.getElementById('cpuRealtime').getContext('2d'),
-{type:'line',data:{labels:[$labels],datasets:[{label:'CPU %',data:[$cpuArr],borderColor:'#E53935',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+{type:'line',data:{labels:$labels,datasets:[{label:'CPU %',data:$cpuArr,borderColor:'#E53935',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
 new Chart(document.getElementById('memRealtime').getContext('2d'),
-{type:'line',data:{labels:[$labels],datasets:[{label:'Memory %',data:[$memArr],borderColor:'#1E88E5',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+{type:'line',data:{labels:$labels,datasets:[{label:'Memory %',data:$memArr,borderColor:'#1E88E5',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
 new Chart(document.getElementById('diskRealtime').getContext('2d'),
-{type:'line',data:{labels:[$labels],datasets:[{label:'Disk %',data:[$diskArr],borderColor:'#8E24AA',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
+{type:'line',data:{labels:$labels,datasets:[{label:'Disk %',data:$diskArr,borderColor:'#8E24AA',fill:false}]},options:{scales:{y:{min:0,max:100}}}});
 new Chart(document.getElementById('netRealtime').getContext('2d'),
-{type:'line',data:{labels:[$labels],datasets:[{label:'Network KB/s',data:[$netArr],borderColor:'#00ACC1',fill:false}]},options:{scales:{y:{beginAtZero:true}}}});
+{type:'line',data:{labels:$labels,datasets:[{label:'Network KB/s',data:$netArr,borderColor:'#00ACC1',fill:false}]},options:{scales:{y:{beginAtZero:true}}}});
 document.querySelector('.tablink').click();
 }
 </script>
