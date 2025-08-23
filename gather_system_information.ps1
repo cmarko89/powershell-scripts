@@ -81,7 +81,7 @@ $diskUsedGB= [math]::Round($diskUsed/1GB,2)
 $diskFreeGB= [math]::Round($diskFree/1GB,2)
 $diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,0) } else {0}
 $uptime = (Get-Date) - $OS.LastBootUpTime
-$gpuNames = if ($GPU) { ($GPU | Select -Expand Name) -join "<br/>" } else { "None" }
+$gpuNames = if ($GPU) { ($GPU | Select-Object -Expand Name) -join "<br/>" } else { "None" }
 
 # ====================================================================
 # Collect Performance Samples (30 seconds)
