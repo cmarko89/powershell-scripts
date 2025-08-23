@@ -4,6 +4,7 @@ Emkraan branded
 Dark HTML tabbed dashboard with CPU/Memory/Disk/Network charts, system info, performance graphs,
 printer/service tables, and back to top button. Extended System Card & Disk Tab.
 #>
+$ErrorActionPreference = "SilentlyContinue"
 $tempDir  = $env:TEMP
 $htmlPath = Join-Path $tempDir "system_report.html"
 Write-Host "Collecting system inventory..." -ForegroundColor Cyan
