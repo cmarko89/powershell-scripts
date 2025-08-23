@@ -16,7 +16,6 @@ $MemoryModules  = Get-CimInstance Win32_PhysicalMemory
 $Disks          = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3"
 $DiskDrives     = Get-CimInstance Win32_DiskDrive
 $OS             = Get-CimInstance Win32_OperatingSystem
-$BIOS           = Get-CimInstance Win32_BIOS
 $Motherboard    = Get-CimInstance Win32_BaseBoard
 $NICs           = Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled }
 $Printers       = Get-CimInstance Win32_Printer | Select Name,DriverName,PortName,Default,WorkOffline
@@ -82,6 +81,7 @@ try {
         $smartData[$d.InstanceName] = if ($d.PredictFailure) { "❌ Predicted Failure" } else { "✅ OK" }
     }
 } catch { }
+
 $diskDetails = $DiskDrives | ForEach-Object {
     [PSCustomObject]@{
         Model        = $_.Model
@@ -90,7 +90,10 @@ $diskDetails = $DiskDrives | ForEach-Object {
         Status       = $_.Status
         SerialNumber = $_.SerialNumber
         Firmware     = $_.FirmwareRevision
-        SMARTHealth  = ($smartData.Keys | Where-Object { $_ -like "*$($_.PNPDeviceID)*" } | ForEach-Object { $smartData[$_] }) -join ","
+        SMARTHealth  = (( $smartData.Keys |
+            Where-Object { $_ -like "*$($_.PNPDeviceID)*" } |
+            ForEach-Object { $smartData[$_] }
+        ) -join ",")
     }
 }
 $diskModels = ($DiskDrives | ForEach-Object { "$($_.Model) ($($_.InterfaceType))" }) -join "<br/>"
