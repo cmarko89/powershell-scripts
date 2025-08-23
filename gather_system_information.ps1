@@ -1,20 +1,11 @@
 <#
-System Report Script
-Emkraan branded
-- Dark HTML dashboard with tabs & responsive tables
-- Summary tab: CPU/Memory/Disk doughnut charts + system details (CPU+GPU, uptime, printers, services)
-- Performance tab: sampled data (30s) CPU/Memory/Disk as line charts
-- Printers trimmed to 5 useful columns
-- Excel export: **disabled/commented out**
-- Shows progress in console during performance sampling
+System Report Script (HTML Only)
+Adds CPU speed, GPU memory, RAM type + speed to System card
 #>
 
 $tempDir  = $env:TEMP
 $htmlPath = Join-Path $tempDir "system_report.html"
 
-# ====================================================================
-# Data Collection
-# ====================================================================
 Write-Host "Collecting system inventory..." -ForegroundColor Cyan
 
 $ComputerSystem = Get-CimInstance Win32_ComputerSystem
@@ -55,7 +46,28 @@ $diskUsedGB= [math]::Round($diskUsed/1GB,2)
 $diskFreeGB= [math]::Round($diskFree/1GB,2)
 $diskUsedPct = if ($diskSum -gt 0) { [math]::Round(($diskUsed/$diskSum)*100,0) } else {0}
 $uptime = (Get-Date) - $OS.LastBootUpTime
-$gpuNames = if ($GPU) { ($GPU | Select -Expand Name) -join "<br/>" } else { "None" }
+
+# GPU Names + Memory
+$gpuInfo = if ($GPU) {
+    $GPU | ForEach-Object {
+        $memGB = if ($_.AdapterRAM) { [math]::Round($_.AdapterRAM/1GB,2) } else { "N/A" }
+        "$($_.Name) (${memGB} GB)"
+    } -join "<br/>"
+} else { "None" }
+
+# CPU Speed
+$cpuName = $CPU.Name
+$cpuSpeed = if ($CPU.MaxClockSpeed) { "$($CPU.MaxClockSpeed) MHz" } else { "N/A" }
+
+# RAM Type + Speed
+$ramTypeLookup = @{
+    20="DDR";21="DDR2";22="DDR2 FB-DIMM";24="DDR3";26="DDR4";30="LPDDR4";34="DDR5"
+}
+$ramTypeSpeed = $MemoryModules | ForEach-Object {
+    $t = if ($ramTypeLookup.ContainsKey($_.MemoryType)) { $ramTypeLookup[$_.MemoryType] } else { "Unknown" }
+    "$t $($_.Speed) MHz"
+} | Sort-Object -Unique
+$ramInfo = ($ramTypeSpeed -join ", ")
 
 # ====================================================================
 # Collect Performance Samples (30 seconds with progress bar)
@@ -63,8 +75,8 @@ $gpuNames = if ($GPU) { ($GPU | Select -Expand Name) -join "<br/>" } else { "Non
 $cpuSamples   = @()
 $memSamples   = @()
 $diskSamples  = @()
-
 $totalSamples = 15   # 15 x 2s = 30 seconds
+
 for ($i=1; $i -le $totalSamples; $i++) {
     Write-Progress -Activity "Collecting performance samples" `
                    -Status "Sample $i of $totalSamples..." `
@@ -85,36 +97,6 @@ $cpuArr   = ($cpuSamples -join ",")
 $memArr   = ($memSamples -join ",")
 $diskArr  = ($diskSamples -join ",")
 $labels   = (0..($cpuSamples.Count-1) | ForEach-Object {$_*2}) -join ","
-
-# ====================================================================
-# Helper: ConvertTo-HTMLTable
-# ====================================================================
-function ConvertTo-HTMLTable {
-    param($Data,$Title)
-    if (-not $Data) { return "" }
-    $html = "<h3>$Title</h3><div class='table-container'><table>"
-    if ($Data -is [System.Collections.IEnumerable] -and -not ($Data -is [string])) {
-        $props = $Data | Select -First 1 | Get-Member -MemberType Property,NoteProperty | Select -Expand Name
-        $html += "<tr>" + ($props|%{"<th>$_</th>"}) -join "" + "</tr>"
-        foreach ($row in $Data) {
-            $cells = foreach ($p in $props) {
-                $v=$row.$p; if([string]::IsNullOrWhiteSpace($v)){"<td>-</td>"} else {"<td>$v</td>"}
-            }
-            $html += "<tr>" + ($cells -join "") + "</tr>"
-        }
-    }
-    else {
-        $props = $Data | Get-Member -MemberType *Property | Select -Expand Name
-        $html += "<tr><th>Property</th><th>Value</th></tr>"
-        foreach ($p in $props) {
-            $v=$Data.$p; if(-not [string]::IsNullOrWhiteSpace("$v")){
-                if ($v -is [Array]){$v=$v -join ", "}
-                $html += "<tr><td>$p</td><td>$v</td></tr>"
-            }
-        }
-    }
-    $html += "</table></div>";return $html
-}
 
 # ====================================================================
 # HTML Report
@@ -189,7 +171,6 @@ window.onload=function(){
 
 <div class="tab">
  <button class="tablink" onclick="openTab(event,'Summary')">Summary</button>
- <button class="tablink" onclick="openTab(event,'Overview')">Overview</button>
  <button class="tablink" onclick="openTab(event,'Performance')">Performance</button>
  <button class="tablink" onclick="openTab(event,'Disks')">Disks</button>
  <button class="tablink" onclick="openTab(event,'Network')">Network</button>
@@ -204,8 +185,9 @@ window.onload=function(){
   <div class="card"><h2>Disk</h2><canvas id="diskChartSummary"></canvas><p>${diskUsedPct}% Used<br/>Total: $([math]::Round($diskSum/1GB,2)) GB</p></div>
   <div class="card"><h2>System</h2>
    <p><b>OS:</b> $($OS.Caption) ($($OS.OSArchitecture))</p>
-   <p><b>CPU:</b> $($CPU.Name)</p>
-   <p><b>GPU:</b> $gpuNames</p>
+   <p><b>CPU:</b> $cpuName ($cpuSpeed)</p>
+   <p><b>GPU:</b> $gpuInfo</p>
+   <p><b>Memory:</b> $ramInfo</p>
    <p><b>Uptime:</b> $([string]::Format("{0:%d}d {0:%h}h {0:%m}m",$uptime))</p>
    <p><b>Printers:</b> $($Printers.Count) | <b>USB Devices:</b> $($USBDevices.Count)</p>
    <p><b>Services:</b> $($Services.Count)</p>
@@ -218,16 +200,6 @@ window.onload=function(){
  <canvas id="cpuRealtime" height="120"></canvas>
  <canvas id="memRealtime" height="120"></canvas>
  <canvas id="diskRealtime" height="120"></canvas>
-</div>
-
-<div id="Overview" class="tabcontent">
-$(ConvertTo-HTMLTable $ComputerSystem "Computer System")
-$(ConvertTo-HTMLTable $BIOS "BIOS")
-$(ConvertTo-HTMLTable $Motherboard "Motherboard")
-$(ConvertTo-HTMLTable $CPU "CPU")
-$(ConvertTo-HTMLTable $GPU "Graphics")
-$(ConvertTo-HTMLTable $OS "OS")
-$(ConvertTo-HTMLTable ($MemoryModules|Select Manufacturer,PartNumber,@{n="CapacityGB";e={[math]::Round($_.Capacity/1GB,2)}}) "Memory Modules")
 </div>
 
 <div id="Disks" class="tabcontent">
@@ -244,9 +216,7 @@ $(ConvertTo-HTMLTable ($Disks|Select DeviceID,VolumeName,@{n="SizeGB";e={[math]:
 </html>
 "@
 
-# ====================================================================
 # Save & Launch
-# ====================================================================
 $HTML | Set-Content $htmlPath -Encoding UTF8
 Start-Process $htmlPath
 
