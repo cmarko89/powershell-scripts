@@ -52,7 +52,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 echo "[*] Applying BIOS config..."
-sudo "$DCC_CLI" --import="$CONFIG_FILE"
+sudo "$DCC_CLI" -I "$CONFIG_FILE"
 
 echo "[+] Import complete. A reboot may be required for all settings to take effect."
 rm -f "$CONFIG_FILE"

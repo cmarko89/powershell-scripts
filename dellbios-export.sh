@@ -43,7 +43,7 @@ else
 fi
 
 echo "[*] Exporting BIOS config to $EXPORT_PATH..."
-sudo "$DCC_CLI" --save="$EXPORT_PATH"
+sudo "$DCC_CLI" -O "$EXPORT_PATH"
 
 if [ -f "$EXPORT_PATH" ]; then
     echo "[+] Export complete: $EXPORT_PATH"
