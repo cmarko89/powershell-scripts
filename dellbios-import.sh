@@ -21,7 +21,7 @@ install_dcc() {
 
     echo "[*] Downloading Dell Command | Configure..."
     mkdir -p "$TMP_DIR"
-    curl -fSL "$TAR_URL" -o "$TMP_DIR/dcc.tar.gz"
+    curl -fSL -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "$TAR_URL" -o "$TMP_DIR/dcc.tar.gz"
 
     echo "[*] Extracting..."
     tar -zxf "$TMP_DIR/dcc.tar.gz" -C "$TMP_DIR"
