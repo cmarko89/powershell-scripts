@@ -3,7 +3,7 @@
 set -e
 
 DCC_CLI="/opt/dell/dcc/cctk"
-CONFIG_URL="https://raw.githubusercontent.com/cmarko89/powershell-scripts/main/bios_config.ini"
+CONFIG_URL="https://raw.githubusercontent.com/cmarko89/powershell-scripts/refs/heads/main/bios_config.ini"
 CONFIG_FILE="/tmp/bios_config.ini"
 TAR_URL_22="https://dl.dell.com/FOLDER12705833M/1/command-configure_5.1.0-6.ubuntu22_amd64.tar.gz"
 TAR_URL_24="https://dl.dell.com/FOLDER12705845M/1/command-configure_5.1.0-6.ubuntu24_amd64.tar.gz"
@@ -51,8 +51,11 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
+read -rsp "[?] Enter current BIOS password: " BIOS_PASS
+echo
+
 echo "[*] Applying BIOS config..."
-sudo "$DCC_CLI" -I "$CONFIG_FILE"
+sudo "$DCC_CLI" --ValSetupPwd="$BIOS_PASS" -I "$CONFIG_FILE"
 
 echo "[+] Import complete. A reboot may be required for all settings to take effect."
 rm -f "$CONFIG_FILE"
