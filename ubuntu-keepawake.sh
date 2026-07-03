@@ -2,7 +2,7 @@
 # ===========================================================================
 # Script Name  : ubuntu-keepawake.sh
 # Version      : 1.0.0
-# Author       : Richard Pierre
+# Author       : Emkraan Administrator
 # Last Updated : 2026-05-24
 # ===========================================================================
 #
